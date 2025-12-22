@@ -1342,27 +1342,51 @@ local function ForcePlayerToLobby(playerId)
 end
 
 RegisterCommand('pvpforcelobby', function(source, args)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    -- ✅ NOUVEAU: Utiliser le système de permissions
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
     local targetId = tonumber(args[1])
     if not targetId then
-        print('[PVP] Usage: pvpforcelobby [player_id]')
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Usage: /pvpforcelobby [player_id]')
+        else
+            print('[PVP] Usage: pvpforcelobby [player_id]')
+        end
         return
     end
     
     if ForcePlayerToLobby(targetId) then
-        print('[PVP] Joueur ' .. targetId .. ' force au lobby')
+        local msg = '✅ Joueur ' .. targetId .. ' forcé au lobby'
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~g~' .. msg)
+        else
+            print('[PVP] ' .. msg)
+        end
     else
-        print('[PVP] Impossible de forcer joueur ' .. targetId)
+        local msg = '❌ Impossible de forcer joueur ' .. targetId
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~' .. msg)
+        else
+            print('[PVP] ' .. msg)
+        end
     end
 end, false)
 
 RegisterCommand('pvpkickall', function(source)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    -- ✅ NOUVEAU: Utiliser le système de permissions
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
@@ -1396,12 +1420,22 @@ RegisterCommand('pvpkickall', function(source)
     
     BroadcastQueueStatsIfChanged()
     
-    print('[PVP] ' .. kickedCount .. ' joueurs forces au lobby')
+    local msg = kickedCount .. ' joueurs forcés au lobby'
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~g~' .. msg)
+    else
+        print('[PVP] ' .. msg)
+    end
 end, false)
 
 RegisterCommand('pvpstatus', function(source)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    -- ✅ NOUVEAU: Utiliser le système de permissions
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
@@ -1418,10 +1452,20 @@ RegisterCommand('pvpstatus', function(source)
         totalInQueue = totalInQueue + #queue
     end
     
-    print('[PVP] Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue)
+    local msg1 = 'Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~b~' .. msg1)
+    else
+        print('[PVP] ' .. msg1)
+    end
     
     local stats = GetQueueStats()
-    print('[PVP] Stats queues: 1v1=' .. stats['1v1'] .. ', 2v2=' .. stats['2v2'] .. ', 3v3=' .. stats['3v3'] .. ', 4v4=' .. stats['4v4'])
+    local msg2 = 'Stats queues: 1v1=' .. stats['1v1'] .. ', 2v2=' .. stats['2v2'] .. ', 3v3=' .. stats['3v3'] .. ', 4v4=' .. stats['4v4']
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~b~' .. msg2)
+    else
+        print('[PVP] ' .. msg2)
+    end
 end, false)
 
 DebugSuccess('Systeme PVP charge (VERSION 4.12.0 - ÉCHANGE SPAWNS PAR ROUND)')
