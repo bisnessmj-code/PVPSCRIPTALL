@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════════
+#  GITIGNORE - FIGHT LEAGUE PVP PODIUM
+# ═══════════════════════════════════════════════════════════════
+
+# Fichiers de configuration sensibles
+# (Si vous versionnez votre config, ne commitez jamais les credentials)
+# config/config.lua
+
+# Logs
+*.log
+logs/
+*.txt.log
+
+# Fichiers temporaires système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs / IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Fichiers de sauvegarde
+*.bak
+*.backup
+*.old
+*.tmp
+*~
+
+# Cache
+__pycache__/
+*.pyc
+.cache/
+
+# Node modules (si vous utilisez des outils Node)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Archives
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# Fichiers de test
+test/
+tests/
+*.test.lua
+
+# Documentation temporaire
+docs/temp/
+*.draft.md
+
+# Fichiers FiveM générés
+stream/
+cache/
+
+# Builds
+dist/
+build/
+
+# Fichiers sensibles (credentials, tokens)
+*.env
+.env.local
+credentials.json
+secrets.lua

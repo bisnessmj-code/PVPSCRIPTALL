@@ -1,0 +1,1436 @@
+-- ========================================
+-- PVP GUNFIGHT SERVER MAIN
+-- Version 4.8.0 - FIX CRASH CRITIQUE (RACE CONDITION)
+-- ========================================
+
+DebugServer('Chargement systeme PVP...')
+
+-- ========================================
+-- ÉTATS DE MATCH (NOUVEAU)
+-- ========================================
+local MATCH_STATE = {
+    CREATING = 'creating',
+    STARTING = 'starting',
+    PLAYING = 'playing',
+    ROUND_END = 'round_end',
+    FINISHING = 'finishing',
+    CANCELLED = 'cancelled',
+    FINISHED = 'finished'
+}
+
+-- Variables
+local queues = {
+    ['1v1'] = {},
+    ['2v2'] = {},
+    ['3v3'] = {},
+    ['4v4'] = {}
+}
+
+local activeMatches = {}
+local playersInQueue = {}
+local playerCurrentMatch = {}
+local playerCurrentBucket = {}
+local playerWasSoloBeforeMatch = {}
+local nextBucketId = 100
+
+-- Systeme de heartbeat pour detecter les crashes
+local playerLastHeartbeat = {}
+local HEARTBEAT_TIMEOUT = 10000
+
+-- TABLE DES NOMS D'ARMES (POUR KILLFEED)
+local WEAPON_NAMES = {
+    [GetHashKey('WEAPON_PISTOL')] = 'Pistol',
+    [GetHashKey('WEAPON_PISTOL50')] = 'Pistol .50',
+    [GetHashKey('WEAPON_COMBATPISTOL')] = 'Combat Pistol',
+    [GetHashKey('WEAPON_APPISTOL')] = 'AP Pistol',
+    [GetHashKey('WEAPON_HEAVYPISTOL')] = 'Heavy Pistol',
+    [GetHashKey('WEAPON_SNSPISTOL')] = 'SNS Pistol',
+    [GetHashKey('WEAPON_VINTAGEPISTOL')] = 'Vintage Pistol',
+    [GetHashKey('WEAPON_ASSAULTRIFLE')] = 'AK-47',
+    [GetHashKey('WEAPON_CARBINERIFLE')] = 'M4A1',
+    [GetHashKey('WEAPON_SMG')] = 'SMG',
+    [GetHashKey('WEAPON_MICROSMG')] = 'Micro SMG',
+    [GetHashKey('WEAPON_PUMPSHOTGUN')] = 'Pump Shotgun',
+    [GetHashKey('WEAPON_KNIFE')] = 'Knife',
+    [GetHashKey('WEAPON_NIGHTSTICK')] = 'Nightstick',
+    [GetHashKey('WEAPON_HAMMER')] = 'Hammer',
+    [GetHashKey('WEAPON_BAT')] = 'Baseball Bat',
+}
+
+-- ========================================
+-- 🛡️ NOUVELLE FONCTION: VÉRIFIER VALIDITÉ MATCH
+-- ========================================
+local function IsMatchValid(matchId)
+    if not matchId then return false end
+    local match = activeMatches[matchId]
+    if not match then return false end
+    if match.status == MATCH_STATE.CANCELLED or match.status == MATCH_STATE.FINISHED then
+        return false
+    end
+    return true
+end
+
+-- ========================================
+-- 🛡️ NOUVELLE FONCTION: OBTENIR MATCH SÉCURISÉ
+-- ========================================
+local function GetMatchSafe(matchId)
+    if not matchId then 
+        DebugError('GetMatchSafe: matchId nil')
+        return nil 
+    end
+    
+    local match = activeMatches[matchId]
+    
+    if not match then
+        DebugError('GetMatchSafe: match %s introuvable', tostring(matchId))
+        return nil
+    end
+    
+    if match.status == MATCH_STATE.CANCELLED then
+        DebugWarn('GetMatchSafe: match %s annulé', matchId)
+        return nil
+    end
+    
+    if match.status == MATCH_STATE.FINISHED then
+        DebugWarn('GetMatchSafe: match %s terminé', matchId)
+        return nil
+    end
+    
+    return match
+end
+
+-- ========================================
+-- 🛡️ NOUVELLE FONCTION: ANNULER MATCH
+-- ========================================
+local function CancelMatch(matchId, reason)
+    local match = activeMatches[matchId]
+    if not match then return end
+    
+    DebugWarn('🚫 ANNULATION MATCH %d - Raison: %s', matchId, reason)
+    
+    match.status = MATCH_STATE.CANCELLED
+    
+    -- Notifier tous les joueurs
+    for i = 1, #match.players do
+        local playerId = match.players[i]
+        if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:forceReturnToLobby', playerId)
+            TriggerClientEvent('esx:showNotification', playerId, '~r~Match annulé: ' .. reason)
+            
+            playerCurrentMatch[playerId] = nil
+            playerLastHeartbeat[playerId] = nil
+            ResetPlayerBucket(playerId)
+        end
+    end
+    
+    -- Supprimer le match
+    Wait(1000)
+    activeMatches[matchId] = nil
+    
+    DebugSuccess('✅ Match %d annulé et nettoyé', matchId)
+end
+
+-- ========================================
+-- FONCTION: OBTENIR NOM FIVEM + ID
+-- ========================================
+local function GetPlayerFiveMNameWithID(playerId)
+    if not playerId or playerId <= 0 then
+        return "Joueur inconnu"
+    end
+    
+    if GetPlayerPing(playerId) <= 0 then
+        return "Joueur déconnecté"
+    end
+    
+    local playerName = GetPlayerName(playerId)
+    
+    if playerName then
+        playerName = playerName:gsub("%^%d", "")
+    else
+        playerName = "Joueur"
+    end
+    
+    return string.format("%s [%d]", playerName, playerId)
+end
+
+-- ========================================
+-- FONCTION: ANNULER RECHERCHE GROUPE COMPLET
+-- ========================================
+local function CancelGroupSearch(groupMembers, mode, reason)
+    if not groupMembers or #groupMembers == 0 then return end
+    
+    DebugWarn('🚫 Annulation recherche groupe - Raison: %s', reason)
+    
+    for i = 1, #groupMembers do
+        local memberId = groupMembers[i]
+        
+        for j = #queues[mode], 1, -1 do
+            if queues[mode][j] == memberId then
+                table.remove(queues[mode], j)
+                DebugServer('  - Joueur %d retiré de la queue', memberId)
+                break
+            end
+        end
+        
+        playersInQueue[memberId] = nil
+        playerLastHeartbeat[memberId] = nil
+        
+        if GetPlayerPing(memberId) > 0 then
+            TriggerClientEvent('pvp:searchCancelled', memberId)
+            TriggerClientEvent('esx:showNotification', memberId, '~r~' .. reason)
+            DebugServer('  ✅ Joueur %d notifié', memberId)
+        end
+    end
+    
+    DebugSuccess('✅ Recherche annulée pour %d joueurs', #groupMembers)
+end
+
+-- ========================================
+-- FONCTION: DÉCONNEXION JOUEUR EN RECHERCHE
+-- ========================================
+local function HandlePlayerDisconnectFromQueue(playerId)
+    if not playersInQueue[playerId] then return end
+    
+    local queueData = playersInQueue[playerId]
+    local mode = queueData.mode
+    local groupMembers = queueData.groupMembers or {playerId}
+    
+    DebugWarn('⚠️ Joueur %d déconnecté pendant recherche %s', playerId, mode)
+    
+    if #groupMembers > 1 then
+        DebugWarn('🚨 DÉCONNEXION MEMBRE GROUPE - %d joueurs affectés', #groupMembers)
+        CancelGroupSearch(groupMembers, mode, 'Recherche annulée: Un membre a quitté')
+    else
+        for j = #queues[mode], 1, -1 do
+            if queues[mode][j] == playerId then
+                table.remove(queues[mode], j)
+                break
+            end
+        end
+        
+        playersInQueue[playerId] = nil
+        playerLastHeartbeat[playerId] = nil
+        
+        DebugServer('Recherche solo annulée pour joueur %d', playerId)
+    end
+end
+
+-- THREAD DETECTION CRASH
+CreateThread(function()
+    while true do
+        Wait(5000)
+        
+        local currentTime = GetGameTimer()
+        local crashedPlayers = {}
+        
+        for playerId, matchId in pairs(playerCurrentMatch) do
+            if activeMatches[matchId] then
+                local lastHeartbeat = playerLastHeartbeat[playerId] or 0
+                local timeSinceHeartbeat = currentTime - lastHeartbeat
+                
+                if timeSinceHeartbeat > HEARTBEAT_TIMEOUT then
+                    local ping = GetPlayerPing(playerId)
+                    
+                    if ping <= 0 or timeSinceHeartbeat > HEARTBEAT_TIMEOUT then
+                        DebugError('CRASH DETECTE Joueur %d (Ping: %d, Timeout: %dms)', 
+                            playerId, ping, timeSinceHeartbeat)
+                        
+                        crashedPlayers[#crashedPlayers + 1] = playerId
+                    end
+                end
+            end
+        end
+        
+        for i = 1, #crashedPlayers do
+            local playerId = crashedPlayers[i]
+            DebugWarn('Traitement crash joueur %d...', playerId)
+            HandlePlayerDisconnect(playerId)
+        end
+    end
+end)
+
+-- EVENT HEARTBEAT CLIENT
+RegisterNetEvent('pvp:heartbeat', function()
+    local src = source
+    playerLastHeartbeat[src] = GetGameTimer()
+end)
+
+-- GESTION ROUTING BUCKETS
+local function CreateMatchBucket()
+    local bucketId = nextBucketId
+    nextBucketId = nextBucketId + 1
+    
+    SetRoutingBucketPopulationEnabled(bucketId, true)
+    SetRoutingBucketEntityLockdownMode(bucketId, 'strict')
+    
+    DebugBucket('Bucket %d cree', bucketId)
+    return bucketId
+end
+
+local function SetPlayerBucket(playerId, bucketId)
+    if playerId <= 0 then return end
+    
+    SetPlayerRoutingBucket(playerId, bucketId)
+    playerCurrentBucket[playerId] = bucketId
+    Wait(100)
+end
+
+local function ResetPlayerBucket(playerId)
+    if playerId <= 0 then return end
+    
+    SetPlayerRoutingBucket(playerId, 0)
+    playerCurrentBucket[playerId] = nil
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: SYNC SÉCURISÉ
+-- ========================================
+local function SyncAllPlayersInMatch(matchId)
+    local match = GetMatchSafe(matchId)
+    if not match then 
+        DebugWarn('SyncAllPlayersInMatch: match %s invalide', tostring(matchId))
+        return 
+    end
+    
+    for i = 1, #match.players do
+        local playerId = match.players[i]
+        if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            local currentBucket = GetPlayerRoutingBucket(playerId)
+            if currentBucket ~= match.bucketId then
+                SetPlayerBucket(playerId, match.bucketId)
+            end
+        end
+    end
+end
+
+RegisterNetEvent('pvp:requestTeammateRefresh', function()
+    local src = source
+    local matchId = playerCurrentMatch[src]
+    
+    if not IsMatchValid(matchId) then
+        DebugWarn('Joueur %d n\'est pas en match valide', src)
+        return
+    end
+    
+    local teammates = GetTeammatesForPlayer(matchId, src)
+    
+    DebugServer('📡 Rafraîchissement coéquipiers pour joueur %d: %d coéquipiers', src, #teammates)
+    
+    TriggerClientEvent('pvp:setTeammates', src, teammates)
+    
+    for i = 1, #teammates do
+        DebugServer('  - Coéquipier: %d', teammates[i])
+    end
+end)
+
+function GetTeammatesForPlayer(matchId, playerId)
+    local match = GetMatchSafe(matchId)
+    if not match then 
+        DebugWarn('GetTeammatesForPlayer: match %s invalide', tostring(matchId))
+        return {} 
+    end
+    
+    local playerTeam = match.playerTeams[playerId]
+    if not playerTeam then 
+        DebugWarn('Équipe introuvable pour joueur %d', playerId)
+        return {} 
+    end
+    
+    local teammates = {}
+    local teamPlayers = playerTeam == 'team1' and match.team1 or match.team2
+    
+    DebugServer('🔍 GetTeammatesForPlayer - Joueur %d (Team: %s)', playerId, playerTeam)
+    
+    for i = 1, #teamPlayers do
+        if teamPlayers[i] ~= playerId and teamPlayers[i] > 0 then
+            teammates[#teammates + 1] = teamPlayers[i]
+            DebugServer('  ✅ Coéquipier ajouté: %d', teamPlayers[i])
+        end
+    end
+    
+    DebugServer('📊 Total coéquipiers pour %d: %d', playerId, #teammates)
+    
+    return teammates
+end
+
+local function GetRandomArena()
+    local arenaKeys = {}
+    for key in pairs(Config.Arenas) do
+        arenaKeys[#arenaKeys + 1] = key
+    end
+    
+    local randomIndex = math.random(1, #arenaKeys)
+    local arenaKey = arenaKeys[randomIndex]
+    
+    return arenaKey, Config.Arenas[arenaKey]
+end
+
+local function BroadcastKillfeed(matchId, killerId, victimId, weaponHash, isHeadshot)
+    local match = GetMatchSafe(matchId)
+    if not match then return end
+    
+    local killerName = nil
+    local victimName = "Unknown"
+    
+    if killerId and killerId > 0 then
+        killerName = GetPlayerFiveMNameWithID(killerId)
+    end
+    
+    victimName = GetPlayerFiveMNameWithID(victimId)
+    
+    local weaponName = WEAPON_NAMES[weaponHash] or "Unknown Weapon"
+    
+    if not killerId or killerId == victimId then
+        killerName = nil
+        weaponName = "Suicide"
+    end
+    
+    for i = 1, #match.players do
+        local playerId = match.players[i]
+        if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:showKillfeed', playerId, killerName, victimName, weaponName, isHeadshot)
+        end
+    end
+    
+    if killerName then
+        DebugServer('[KILLFEED] %s eliminated %s with %s (HS: %s)', 
+            killerName, victimName, weaponName, tostring(isHeadshot))
+    else
+        DebugServer('[KILLFEED] %s died (%s)', victimName, weaponName)
+    end
+end
+
+-- ========================================
+-- MATCHMAKING
+-- ========================================
+RegisterNetEvent('pvp:joinQueue', function(mode)
+    local src = source
+    local xPlayer = ESX.GetPlayerFromId(src)
+    
+    if not xPlayer then return end
+    
+    local playerDisplayName = GetPlayerFiveMNameWithID(src)
+    DebugMatchmaking('%s rejoint queue %s', playerDisplayName, mode)
+    
+    if playersInQueue[src] then
+        TriggerClientEvent('esx:showNotification', src, '~r~Deja en file d\'attente!')
+        return
+    end
+    
+    playerLastHeartbeat[src] = GetGameTimer()
+    
+    local group = exports['pvp_gunfight']:GetPlayerGroup(src)
+    local playersToQueue = {}
+    local isSoloQueue = false
+    
+    if group then
+        if group.leaderId ~= src then
+            TriggerClientEvent('esx:showNotification', src, '~r~Seul le leader peut lancer!')
+            return
+        end
+        
+        local playersNeededPerTeam = tonumber(mode:sub(1, 1))
+        
+        if #group.members ~= playersNeededPerTeam then
+            TriggerClientEvent('esx:showNotification', src, 
+                string.format('~r~Il faut %d joueur(s) pour le mode %s!', playersNeededPerTeam, mode))
+            return
+        end
+        
+        local allReady = true
+        for memberId, isReady in pairs(group.ready) do
+            if not isReady then
+                allReady = false
+                break
+            end
+        end
+        
+        if not allReady then
+            TriggerClientEvent('esx:showNotification', src, '~r~Tous les membres doivent etre prets!')
+            return
+        end
+        
+        for i = 1, #group.members do
+            playersToQueue[#playersToQueue + 1] = group.members[i]
+            playerLastHeartbeat[group.members[i]] = GetGameTimer()
+        end
+        
+        isSoloQueue = false
+    else
+        if mode ~= '1v1' then
+            TriggerClientEvent('esx:showNotification', src, '~r~Creez un groupe pour les modes 2v2+!')
+            return
+        end
+        playersToQueue[1] = src
+        isSoloQueue = true
+    end
+    
+    for i = 1, #playersToQueue do
+        local playerId = playersToQueue[i]
+        queues[mode][#queues[mode] + 1] = playerId
+        playersInQueue[playerId] = {
+            mode = mode,
+            startTime = os.time(),
+            groupMembers = playersToQueue,
+            isSolo = isSoloQueue
+        }
+        
+        TriggerClientEvent('pvp:searchStarted', playerId, mode)
+        TriggerClientEvent('esx:showNotification', playerId, '~b~Recherche ' .. mode .. '...')
+    end
+    
+    CheckAndCreateMatch(mode)
+end)
+
+function CheckAndCreateMatch(mode)
+    local playersNeeded = tonumber(mode:sub(1, 1)) * 2
+    
+    if #queues[mode] >= playersNeeded then
+        local matchPlayers = {}
+        
+        for i = 1, playersNeeded do
+            matchPlayers[i] = table.remove(queues[mode], 1)
+        end
+        
+        CreateMatch(mode, matchPlayers)
+    end
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: CRÉER MATCH AVEC PROTECTION
+-- ========================================
+function CreateMatch(mode, players)
+    -- 🛡️ Vérifier que tous les joueurs sont connectés AVANT de créer
+    for i = 1, #players do
+        if GetPlayerPing(players[i]) <= 0 then
+            DebugError('🚨 Joueur %d déconnecté avant création match - ANNULATION', players[i])
+            
+            -- Remettre les autres joueurs en queue
+            for j = 1, #players do
+                if j ~= i and GetPlayerPing(players[j]) > 0 then
+                    queues[mode][#queues[mode] + 1] = players[j]
+                end
+            end
+            
+            return
+        end
+    end
+    
+    local matchId = #activeMatches + 1
+    local bucketId = CreateMatchBucket()
+    local arenaKey, arena = GetRandomArena()
+    
+    if not arena then
+        DebugError('🚨 Arène introuvable - ANNULATION MATCH')
+        -- Remettre en queue
+        for i = 1, #players do
+            if GetPlayerPing(players[i]) > 0 then
+                queues[mode][#queues[mode] + 1] = players[i]
+                playersInQueue[players[i]] = nil
+            end
+        end
+        return
+    end
+    
+    DebugServer('===== MATCH %d =====', matchId)
+    DebugServer('Mode: %s | Joueurs: %d | Arene: %s', mode, #players, arena.name)
+    
+    for i = 1, #players do
+        local playerName = GetPlayerFiveMNameWithID(players[i])
+        DebugServer('  Joueur %d: %s', i, playerName)
+    end
+    
+    local allWereSolo = true
+    for i = 1, #players do
+        local playerId = players[i]
+        if playersInQueue[playerId] and not playersInQueue[playerId].isSolo then
+            allWereSolo = false
+            break
+        end
+    end
+    
+    -- 🛡️ CRÉER LE MATCH AVEC ÉTAT = CREATING
+    activeMatches[matchId] = {
+        mode = mode,
+        players = players,
+        arena = arenaKey,
+        bucketId = bucketId,
+        team1 = {},
+        team2 = {},
+        playerTeams = {},
+        score = {team1 = 0, team2 = 0},
+        currentRound = 1,
+        status = MATCH_STATE.CREATING,  -- 🛡️ État initial
+        startTime = os.time(),
+        deadPlayers = {},
+        deathProcessed = {},
+        wasSoloMatch = allWereSolo
+    }
+    
+    local halfSize = #players / 2
+    for i = 1, #players do
+        local playerId = players[i]
+        
+        -- 🛡️ Vérifier encore une fois que le joueur est connecté
+        if GetPlayerPing(playerId) <= 0 then
+            DebugError('🚨 Joueur %d déconnecté pendant création - ANNULATION MATCH', playerId)
+            CancelMatch(matchId, 'Un joueur s\'est déconnecté')
+            return
+        end
+        
+        local team = i <= halfSize and 'team1' or 'team2'
+        
+        if team == 'team1' then
+            activeMatches[matchId].team1[#activeMatches[matchId].team1 + 1] = playerId
+        else
+            activeMatches[matchId].team2[#activeMatches[matchId].team2 + 1] = playerId
+        end
+        
+        activeMatches[matchId].playerTeams[playerId] = team
+        
+        if playersInQueue[playerId] then
+            playerWasSoloBeforeMatch[playerId] = playersInQueue[playerId].isSolo
+        end
+        
+        playersInQueue[playerId] = nil
+        playerCurrentMatch[playerId] = matchId
+        playerLastHeartbeat[playerId] = GetGameTimer()
+    end
+    
+    -- 🛡️ Vérifier que le match existe toujours avant de continuer
+    if not GetMatchSafe(matchId) then
+        DebugError('🚨 Match %d annulé pendant création', matchId)
+        return
+    end
+    
+    for i = 1, #players do
+        SetPlayerBucket(players[i], bucketId)
+    end
+    
+    Wait(200)
+    
+    -- 🛡️ Vérifier encore
+    if not GetMatchSafe(matchId) then
+        DebugError('🚨 Match %d annulé après buckets', matchId)
+        return
+    end
+    
+    SyncAllPlayersInMatch(matchId)
+    
+    for i = 1, #players do
+        if GetPlayerPing(players[i]) > 0 then
+            TriggerClientEvent('pvp:matchFound', players[i])
+            TriggerClientEvent('esx:showNotification', players[i], '~g~Match trouve! Arene: ~b~' .. arena.name)
+            TriggerClientEvent('pvp:showScoreHUD', players[i], activeMatches[matchId].score, 1)
+        end
+    end
+    
+    TeleportPlayersToArena(matchId, activeMatches[matchId], arena, arenaKey)
+    
+    Wait(3000)
+    
+    -- 🛡️ Vérifier avant sync
+    if not GetMatchSafe(matchId) then
+        DebugError('🚨 Match %d annulé avant sync final', matchId)
+        return
+    end
+    
+    SyncAllPlayersInMatch(matchId)
+    
+    for i = 1, #players do
+        if players[i] > 0 and GetPlayerPing(players[i]) > 0 then
+            TriggerClientEvent('pvp:freezePlayer', players[i])
+        end
+    end
+    
+    Wait(1000)
+    
+    -- 🛡️ PASSER EN ÉTAT STARTING
+    local match = GetMatchSafe(matchId)
+    if match then
+        match.status = MATCH_STATE.STARTING
+        StartRound(matchId, match, arena)
+    else
+        DebugError('🚨 Match %d annulé avant StartRound', matchId)
+    end
+end
+
+function TeleportPlayersToArena(matchId, match, arena, arenaKey)
+    -- 🛡️ Vérifier validité
+    if not match then
+        DebugError('TeleportPlayersToArena: match nil')
+        return
+    end
+    
+    for i = 1, #match.team1 do
+        local playerId = match.team1[i]
+        if arena.teamA[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:teleportToSpawn', playerId, arena.teamA[i], 'team1', matchId, arenaKey)
+        end
+    end
+    
+    for i = 1, #match.team2 do
+        local playerId = match.team2[i]
+        if arena.teamB[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:teleportToSpawn', playerId, arena.teamB[i], 'team2', matchId, arenaKey)
+        end
+    end
+    
+    Wait(1000)
+    
+    for i = 1, #match.players do
+        local playerId = match.players[i]
+        if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            local teammates = GetTeammatesForPlayer(matchId, playerId)
+            
+            DebugServer('📤 Envoi teammates à joueur %d: %s', playerId, json.encode(teammates))
+            TriggerClientEvent('pvp:setTeammates', playerId, teammates)
+        end
+    end
+end
+
+-- CALLBACKS
+ESX.RegisterServerCallback('pvp:getPlayerStats', function(source, cb)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then cb(nil) return end
+    
+    MySQL.single('SELECT * FROM pvp_stats WHERE identifier = ?', {xPlayer.identifier}, function(result)
+        if result then
+            result.name = result.name or xPlayer.getName()
+            result.kills = result.kills or 0
+            result.deaths = result.deaths or 0
+            
+            if Config.Discord and Config.Discord.enabled then
+                exports['pvp_gunfight']:GetPlayerDiscordAvatarAsync(source, function(avatarUrl)
+                    result.avatar = avatarUrl
+                    cb(result)
+                end)
+            else
+                result.avatar = Config.Discord.defaultAvatar
+                cb(result)
+            end
+        else
+            MySQL.insert('INSERT INTO pvp_stats (identifier, name, kills, deaths) VALUES (?, ?, 0, 0)', 
+                {xPlayer.identifier, xPlayer.getName()}, function()
+                exports['pvp_gunfight']:InitPlayerModeStats(xPlayer.identifier, xPlayer.getName())
+                
+                if Config.Discord and Config.Discord.enabled then
+                    exports['pvp_gunfight']:GetPlayerDiscordAvatarAsync(source, function(avatarUrl)
+                        cb({
+                            identifier = xPlayer.identifier,
+                            name = xPlayer.getName(),
+                            elo = Config.StartingELO,
+                            kills = 0, deaths = 0,
+                            matches_played = 0, wins = 0, losses = 0,
+                            avatar = avatarUrl
+                        })
+                    end)
+                else
+                    cb({
+                        identifier = xPlayer.identifier,
+                        name = xPlayer.getName(),
+                        elo = Config.StartingELO,
+                        kills = 0, deaths = 0,
+                        matches_played = 0, wins = 0, losses = 0,
+                        avatar = Config.Discord.defaultAvatar
+                    })
+                end
+            end)
+        end
+    end)
+end)
+
+ESX.RegisterServerCallback('pvp:getPlayerStatsByMode', function(source, cb, mode)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then cb(nil) return end
+    
+    exports['pvp_gunfight']:GetPlayerStatsByMode(xPlayer.identifier, mode, function(stats)
+        if stats then
+            stats.name = xPlayer.getName()
+            if Config.Discord and Config.Discord.enabled then
+                exports['pvp_gunfight']:GetPlayerDiscordAvatarAsync(source, function(avatarUrl)
+                    stats.avatar = avatarUrl
+                    cb(stats)
+                end)
+            else
+                stats.avatar = Config.Discord.defaultAvatar
+                cb(stats)
+            end
+        else
+            cb(nil)
+        end
+    end)
+end)
+
+ESX.RegisterServerCallback('pvp:getPlayerAllModeStats', function(source, cb)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then cb(nil) return end
+    
+    exports['pvp_gunfight']:GetPlayerAllModeStats(xPlayer.identifier, function(statsByMode)
+        if Config.Discord and Config.Discord.enabled then
+            exports['pvp_gunfight']:GetPlayerDiscordAvatarAsync(source, function(avatarUrl)
+                cb({name = xPlayer.getName(), avatar = avatarUrl, modes = statsByMode})
+            end)
+        else
+            cb({name = xPlayer.getName(), avatar = Config.Discord.defaultAvatar, modes = statsByMode})
+        end
+    end)
+end)
+
+ESX.RegisterServerCallback('pvp:getLeaderboard', function(source, cb)
+    MySQL.query('SELECT * FROM pvp_stats ORDER BY elo DESC LIMIT 50', {}, function(results)
+        for i = 1, #results do
+            results[i].kills = results[i].kills or 0
+            results[i].deaths = results[i].deaths or 0
+            results[i].name = results[i].name or ('Joueur ' .. i)
+            results[i].avatar = results[i].discord_avatar or Config.Discord.defaultAvatar
+        end
+        cb(results)
+    end)
+end)
+
+ESX.RegisterServerCallback('pvp:getLeaderboardByMode', function(source, cb, mode)
+    exports['pvp_gunfight']:GetLeaderboardByMode(mode, 50, function(results)
+        cb(results)
+    end)
+end)
+
+-- ========================================
+-- EVENT: ANNULER RECHERCHE
+-- ========================================
+RegisterNetEvent('pvp:cancelSearch', function()
+    local src = source
+    
+    if not playersInQueue[src] then 
+        DebugWarn('Joueur %d pas en queue', src)
+        return 
+    end
+    
+    local queueData = playersInQueue[src]
+    local mode = queueData.mode
+    local groupMembers = queueData.groupMembers or {src}
+    local isSolo = queueData.isSolo
+    
+    DebugServer('📤 Annulation recherche - Joueur %d (Solo: %s)', src, tostring(isSolo))
+    
+    if not isSolo and #groupMembers > 1 then
+        local group = exports['pvp_gunfight']:GetPlayerGroup(src)
+        
+        if group and group.leaderId == src then
+            DebugServer('🔴 Leader annule recherche - Annulation groupe complet')
+            CancelGroupSearch(groupMembers, mode, 'Recherche annulée par le leader')
+        else
+            DebugServer('⚠️ Membre tente d\'annuler - Permission refusée')
+            TriggerClientEvent('esx:showNotification', src, '~r~Seul le leader peut annuler!')
+        end
+    else
+        for j = #queues[mode], 1, -1 do
+            if queues[mode][j] == src then
+                table.remove(queues[mode], j)
+                break
+            end
+        end
+        
+        playersInQueue[src] = nil
+        playerLastHeartbeat[src] = nil
+        TriggerClientEvent('pvp:searchCancelled', src)
+        TriggerClientEvent('esx:showNotification', src, '~y~Recherche annulee')
+        
+        DebugServer('✅ Recherche solo annulée pour joueur %d', src)
+    end
+end)
+
+-- ========================================
+-- 🛡️ GESTION DES MORTS (PROTÉGÉE)
+-- ========================================
+RegisterNetEvent('pvp:playerDied', function(killerId)
+    local victimId = source
+    local matchId = playerCurrentMatch[victimId]
+    
+    -- 🛡️ Vérification sécurisée
+    if not IsMatchValid(matchId) then 
+        DebugWarn('pvp:playerDied: match invalide pour joueur %d', victimId)
+        return 
+    end
+    
+    local match = GetMatchSafe(matchId)
+    if not match then return end
+    
+    local deathKey = victimId .. '_' .. match.currentRound
+    
+    if match.deathProcessed[deathKey] then return end
+    
+    local isFriendlyFire = false
+    if killerId then
+        local killerTeam = match.playerTeams[killerId]
+        local victimTeam = match.playerTeams[victimId]
+        if killerTeam and victimTeam and killerTeam == victimTeam then
+            isFriendlyFire = true
+        end
+    end
+    
+    match.deathProcessed[deathKey] = true
+    
+    local killerName = killerId and GetPlayerFiveMNameWithID(killerId) or "suicide"
+    local victimName = GetPlayerFiveMNameWithID(victimId)
+    
+    DebugServer('[%s] %s tue par %s (FF: %s)', 
+        match.mode, victimName, killerName, tostring(isFriendlyFire))
+    
+    HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
+end)
+
+RegisterNetEvent('pvp:playerDiedOutsideZone', function()
+    local victimId = source
+    local matchId = playerCurrentMatch[victimId]
+    
+    if not IsMatchValid(matchId) then return end
+    
+    local match = GetMatchSafe(matchId)
+    if not match then return end
+    
+    local deathKey = victimId .. '_' .. match.currentRound
+    
+    if match.deathProcessed[deathKey] then return end
+    
+    match.deathProcessed[deathKey] = true
+    HandlePlayerDeath(matchId, match, victimId, nil, false)
+end)
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: HANDLE PLAYER DEATH
+-- ========================================
+function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
+    -- 🛡️ Double vérification
+    if not match then
+        DebugError('HandlePlayerDeath: match nil')
+        return
+    end
+    
+    if match.status ~= MATCH_STATE.PLAYING then 
+        DebugWarn('HandlePlayerDeath: match %d pas en état PLAYING', matchId)
+        return 
+    end
+    
+    match.deadPlayers = match.deadPlayers or {}
+    match.deadPlayers[victimId] = true
+    
+    match.roundStats = match.roundStats or {}
+    match.roundStats[#match.roundStats + 1] = {
+        victim = victimId,
+        killer = killerId,
+        time = os.time(),
+        friendlyFire = isFriendlyFire
+    }
+    
+    if killerId and killerId ~= victimId and not isFriendlyFire then
+        exports['pvp_gunfight']:UpdatePlayerKillsByMode(killerId, 1, match.mode)
+    end
+    exports['pvp_gunfight']:UpdatePlayerDeathsByMode(victimId, 1, match.mode)
+    
+    local weaponHash = GetHashKey('WEAPON_PISTOL50')
+    local isHeadshot = false
+    
+    BroadcastKillfeed(matchId, killerId, victimId, weaponHash, isHeadshot)
+    
+    CheckRoundEnd(matchId, match)
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: CHECK ROUND END
+-- ========================================
+function CheckRoundEnd(matchId, match)
+    -- 🛡️ Vérification
+    if not match then
+        DebugError('CheckRoundEnd: match nil')
+        return
+    end
+    
+    local team1Alive, team2Alive = 0, 0
+    
+    for i = 1, #match.team1 do
+        if not match.deadPlayers[match.team1[i]] then
+            team1Alive = team1Alive + 1
+        end
+    end
+    
+    for i = 1, #match.team2 do
+        if not match.deadPlayers[match.team2[i]] then
+            team2Alive = team2Alive + 1
+        end
+    end
+    
+    local roundWinner = nil
+    
+    if team1Alive == 0 and team2Alive > 0 then
+        match.score.team2 = match.score.team2 + 1
+        roundWinner = 'team2'
+    elseif team2Alive == 0 and team1Alive > 0 then
+        match.score.team1 = match.score.team1 + 1
+        roundWinner = 'team1'
+    elseif team1Alive == 0 and team2Alive == 0 then
+        if match.roundStats and #match.roundStats > 0 then
+            for i = #match.roundStats, 1, -1 do
+                local stat = match.roundStats[i]
+                if stat.killer and not stat.friendlyFire then
+                    roundWinner = match.playerTeams[stat.killer]
+                    break
+                end
+            end
+        end
+        
+        if roundWinner then
+            match.score[roundWinner] = match.score[roundWinner] + 1
+        else
+            match.score.team1 = match.score.team1 + 1
+            roundWinner = 'team1'
+        end
+    end
+    
+    if roundWinner then
+        EndRound(matchId, match, roundWinner)
+    end
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: END ROUND
+-- ========================================
+function EndRound(matchId, match, roundWinner)
+    -- 🛡️ Vérification
+    if not match then
+        DebugError('EndRound: match nil')
+        return
+    end
+    
+    match.status = MATCH_STATE.ROUND_END
+    local arena = Config.Arenas[match.arena]
+    
+    if not arena then
+        DebugError('EndRound: arène introuvable')
+        CancelMatch(matchId, 'Erreur arène')
+        return
+    end
+    
+    SyncAllPlayersInMatch(matchId)
+    
+    for i = 1, #match.players do
+        local playerId = match.players[i]
+        if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            local playerTeam = match.playerTeams[playerId]
+            local isVictory = (roundWinner == playerTeam)
+            
+            TriggerClientEvent('pvp:roundEnd', playerId, roundWinner, match.score, playerTeam, isVictory)
+            TriggerClientEvent('pvp:updateScore', playerId, match.score, match.currentRound)
+        end
+    end
+    
+    if match.score.team1 >= Config.MaxRounds or match.score.team2 >= Config.MaxRounds then
+        EndMatch(matchId, match)
+    else
+        Wait(3000)
+        
+        -- 🛡️ Vérifier que le match existe toujours
+        if not GetMatchSafe(matchId) then
+            DebugError('Match %d annulé pendant EndRound', matchId)
+            return
+        end
+        
+        match.currentRound = match.currentRound + 1
+        match.deadPlayers = {}
+        match.deathProcessed = {}
+        
+        SyncAllPlayersInMatch(matchId)
+        
+        for i = 1, #match.players do
+            if match.players[i] > 0 and GetPlayerPing(match.players[i]) > 0 then
+                TriggerClientEvent('pvp:freezePlayer', match.players[i])
+            end
+        end
+        
+        Wait(500)
+        RespawnPlayers(matchId, match, arena)
+        Wait(2000)
+        
+        -- 🛡️ Vérifier encore
+        if not GetMatchSafe(matchId) then
+            DebugError('Match %d annulé avant StartRound', matchId)
+            return
+        end
+        
+        SyncAllPlayersInMatch(matchId)
+        StartRound(matchId, match, arena)
+    end
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: RESPAWN PLAYERS
+-- ========================================
+function RespawnPlayers(matchId, match, arena)
+    -- 🛡️ Vérification
+    if not match then
+        DebugError('RespawnPlayers: match nil')
+        return
+    end
+    
+    if not arena then
+        DebugError('RespawnPlayers: arena nil')
+        return
+    end
+    
+    for i = 1, #match.team1 do
+        if arena.teamA[i] and match.team1[i] > 0 and GetPlayerPing(match.team1[i]) > 0 then
+            TriggerClientEvent('pvp:respawnPlayer', match.team1[i], arena.teamA[i])
+        end
+    end
+    
+    for i = 1, #match.team2 do
+        if arena.teamB[i] and match.team2[i] > 0 and GetPlayerPing(match.team2[i]) > 0 then
+            TriggerClientEvent('pvp:respawnPlayer', match.team2[i], arena.teamB[i])
+        end
+    end
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: START ROUND
+-- ========================================
+function StartRound(matchId, match, arena)
+    -- 🛡️ VÉRIFICATION CRITIQUE
+    if not match then
+        DebugError('🚨 StartRound: match nil - ARRÊT')
+        return
+    end
+    
+    if not arena then
+        DebugError('🚨 StartRound: arena nil - ARRÊT')
+        CancelMatch(matchId, 'Erreur arène')
+        return
+    end
+    
+    -- 🛡️ Vérifier l'état du match
+    if match.status == MATCH_STATE.CANCELLED or match.status == MATCH_STATE.FINISHED then
+        DebugWarn('StartRound: match %d déjà terminé/annulé', matchId)
+        return
+    end
+    
+    DebugServer('[%s] Round %d', match.mode, match.currentRound)
+    
+    match.status = MATCH_STATE.PLAYING
+    match.roundStats = {}
+    match.deadPlayers = {}
+    match.deathProcessed = {}
+    
+    SyncAllPlayersInMatch(matchId)
+    
+    for i = 1, #match.players do
+        if match.players[i] > 0 and GetPlayerPing(match.players[i]) > 0 then
+            TriggerClientEvent('pvp:roundStart', match.players[i], match.currentRound)
+            TriggerClientEvent('pvp:updateScore', match.players[i], match.score, match.currentRound)
+        end
+    end
+end
+
+-- ========================================
+-- 🛡️ FONCTION MODIFIÉE: END MATCH
+-- ========================================
+function EndMatch(matchId, match)
+    -- 🛡️ Vérification
+    if not match then
+        DebugError('EndMatch: match nil')
+        return
+    end
+    
+    DebugServer('===== FIN MATCH %d [%s] =====', matchId, match.mode)
+    
+    match.status = MATCH_STATE.FINISHING
+    
+    local winningTeam = match.score.team1 > match.score.team2 and 'team1' or 'team2'
+    local winners = winningTeam == 'team1' and match.team1 or match.team2
+    local losers = winningTeam == 'team1' and match.team2 or match.team1
+    
+    if match.mode == '1v1' then
+        exports['pvp_gunfight']:UpdatePlayerElo1v1ByMode(winners[1], losers[1], match.score, match.mode)
+    else
+        exports['pvp_gunfight']:UpdateTeamEloByMode(winners, losers, match.score, match.mode)
+    end
+    
+    for i = 1, #winners do
+        if winners[i] > 0 and GetPlayerPing(winners[i]) > 0 then
+            TriggerClientEvent('pvp:matchEnd', winners[i], true, match.score, match.playerTeams[winners[i]])
+            TriggerClientEvent('pvp:hideScoreHUD', winners[i])
+            playerCurrentMatch[winners[i]] = nil
+            playerLastHeartbeat[winners[i]] = nil
+        end
+    end
+    
+    for i = 1, #losers do
+        if losers[i] > 0 and GetPlayerPing(losers[i]) > 0 then
+            TriggerClientEvent('pvp:matchEnd', losers[i], false, match.score, match.playerTeams[losers[i]])
+            TriggerClientEvent('pvp:hideScoreHUD', losers[i])
+            playerCurrentMatch[losers[i]] = nil
+            playerLastHeartbeat[losers[i]] = nil
+        end
+    end
+    
+    Wait(8000)
+    
+    for i = 1, #match.players do
+        ResetPlayerBucket(match.players[i])
+    end
+    
+    DebugServer('Restauration post-match Solo: %s', tostring(match.wasSoloMatch))
+    exports['pvp_gunfight']:RestoreGroupsAfterMatch(match.players, match.wasSoloMatch)
+    
+    for i = 1, #match.players do
+        playerWasSoloBeforeMatch[match.players[i]] = nil
+    end
+    
+    Wait(2000)
+    
+    -- 🛡️ MARQUER LE MATCH COMME TERMINÉ
+    match.status = MATCH_STATE.FINISHED
+    activeMatches[matchId] = nil
+end
+
+-- ========================================
+-- FONCTION: HANDLE PLAYER DISCONNECT
+-- ========================================
+function HandlePlayerDisconnect(playerId)
+    DebugWarn('⚠️ DÉCONNEXION JOUEUR %d', playerId)
+    
+    ResetPlayerBucket(playerId)
+    playerWasSoloBeforeMatch[playerId] = nil
+    playerLastHeartbeat[playerId] = nil
+    
+    local matchId = playerCurrentMatch[playerId]
+    if not IsMatchValid(matchId) then return end
+    
+    local match = GetMatchSafe(matchId)
+    if not match then return end
+    
+    DebugError('🚨 RAGE QUIT DÉTECTÉ - Match %d [%s]', matchId, match.mode)
+    
+    local quitterTeam = match.playerTeams[playerId]
+    if not quitterTeam then return end
+    
+    local winningTeam = quitterTeam == 'team1' and 'team2' or 'team1'
+    local winners = winningTeam == 'team1' and match.team1 or match.team2
+    local losers = winningTeam == 'team1' and match.team2 or match.team1
+    
+    DebugServer('🏆 Team gagnante: %s (par abandon de %s)', winningTeam, quitterTeam)
+    
+    local forfeitScore = {
+        team1 = winningTeam == 'team1' and Config.MaxRounds or 0,
+        team2 = winningTeam == 'team2' and Config.MaxRounds or 0
+    }
+    
+    if match.mode == '1v1' then
+        if #winners > 0 and #losers > 0 then
+            exports['pvp_gunfight']:UpdatePlayerElo1v1ByMode(winners[1], losers[1], forfeitScore, match.mode)
+            DebugServer('📊 ELO appliqué (1v1) - Gagnant: %d | Perdant (quitteur): %d', winners[1], losers[1])
+        end
+    else
+        exports['pvp_gunfight']:UpdateTeamEloByMode(winners, losers, forfeitScore, match.mode)
+        DebugServer('📊 ELO d\'équipe appliqué (%s) - Gagnants: %d joueurs | Perdants (quitteurs): %d joueurs', 
+            match.mode, #winners, #losers)
+    end
+    
+    for i = 1, #match.players do
+        local pid = match.players[i]
+        if pid > 0 and GetPlayerPing(pid) > 0 and pid ~= playerId then
+            local playerTeam = match.playerTeams[pid]
+            local isWinner = (playerTeam == winningTeam)
+            
+            if isWinner then
+                TriggerClientEvent('esx:showNotification', pid, '~g~🏆 VICTOIRE par abandon adverse!')
+                TriggerClientEvent('pvp:matchEnd', pid, true, forfeitScore, playerTeam)
+            else
+                TriggerClientEvent('esx:showNotification', pid, '~r~❌ DÉFAITE - Un coéquipier a quitté!')
+                TriggerClientEvent('pvp:matchEnd', pid, false, forfeitScore, playerTeam)
+            end
+            
+            TriggerClientEvent('pvp:hideScoreHUD', pid)
+            
+            playerCurrentMatch[pid] = nil
+            playerLastHeartbeat[pid] = nil
+            ResetPlayerBucket(pid)
+            playerWasSoloBeforeMatch[pid] = nil
+        end
+    end
+    
+    Wait(3000)
+    
+    local remainingPlayers = {}
+    for i = 1, #match.players do
+        if match.players[i] > 0 and GetPlayerPing(match.players[i]) > 0 and match.players[i] ~= playerId then
+            remainingPlayers[#remainingPlayers + 1] = match.players[i]
+        end
+    end
+    
+    if #remainingPlayers > 0 then
+        exports['pvp_gunfight']:RestoreGroupsAfterMatch(remainingPlayers, match.wasSoloMatch)
+    end
+    
+    match.status = MATCH_STATE.FINISHED
+    activeMatches[matchId] = nil
+    playerCurrentMatch[playerId] = nil
+    
+    DebugSuccess('✅ Match %d terminé suite au rage quit', matchId)
+end
+
+-- ========================================
+-- EVENT: PLAYER DROPPED
+-- ========================================
+AddEventHandler('playerDropped', function()
+    local src = source
+    
+    DebugWarn('playerDropped event Joueur %d', src)
+    
+    HandlePlayerDisconnectFromQueue(src)
+    HandlePlayerDisconnect(src)
+end)
+
+-- CLEANUP RESSOURCE
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+    
+    DebugError('===== ARRET RESSOURCE PVP =====')
+    
+    for matchId, match in pairs(activeMatches) do
+        for i = 1, #match.players do
+            local playerId = match.players[i]
+            if playerId > 0 and GetPlayerPing(playerId) > 0 then
+                TriggerClientEvent('pvp:hideScoreHUD', playerId)
+                TriggerClientEvent('pvp:disableZones', playerId)
+                TriggerClientEvent('pvp:onResourceStop', playerId)
+                ResetPlayerBucket(playerId)
+                playerWasSoloBeforeMatch[playerId] = nil
+                playerLastHeartbeat[playerId] = nil
+            end
+        end
+    end
+    
+    for mode, queue in pairs(queues) do
+        for i = 1, #queue do
+            if queue[i] > 0 and GetPlayerPing(queue[i]) > 0 then
+                TriggerClientEvent('pvp:searchCancelled', queue[i])
+                playerLastHeartbeat[queue[i]] = nil
+            end
+        end
+        queues[mode] = {}
+    end
+    
+    DebugSuccess('Nettoyage termine')
+end)
+
+-- COMMANDES ADMIN
+local function ForcePlayerToLobby(playerId)
+    if not playerId or playerId <= 0 or GetPlayerPing(playerId) <= 0 then
+        return false
+    end
+    
+    ResetPlayerBucket(playerId)
+    playerWasSoloBeforeMatch[playerId] = nil
+    playerLastHeartbeat[playerId] = nil
+    
+    local matchId = playerCurrentMatch[playerId]
+    if matchId then
+        playerCurrentMatch[playerId] = nil
+    end
+    
+    if playersInQueue[playerId] then
+        local queueData = playersInQueue[playerId]
+        for i = #queues[queueData.mode], 1, -1 do
+            if queues[queueData.mode][i] == playerId then
+                table.remove(queues[queueData.mode], i)
+                break
+            end
+        end
+        playersInQueue[playerId] = nil
+        TriggerClientEvent('pvp:searchCancelled', playerId)
+    end
+    
+    TriggerClientEvent('pvp:hideScoreHUD', playerId)
+    TriggerClientEvent('pvp:forceReturnToLobby', playerId)
+    
+    return true
+end
+
+RegisterCommand('pvpforcelobby', function(source, args)
+    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
+        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+        return
+    end
+    
+    local targetId = tonumber(args[1])
+    if not targetId then
+        print('[PVP] Usage: pvpforcelobby [player_id]')
+        return
+    end
+    
+    if ForcePlayerToLobby(targetId) then
+        print('[PVP] Joueur ' .. targetId .. ' force au lobby')
+    else
+        print('[PVP] Impossible de forcer joueur ' .. targetId)
+    end
+end, false)
+
+RegisterCommand('pvpkickall', function(source)
+    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
+        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+        return
+    end
+    
+    local kickedCount = 0
+    
+    for _, match in pairs(activeMatches) do
+        for i = 1, #match.players do
+            if match.players[i] > 0 and GetPlayerPing(match.players[i]) > 0 then
+                ForcePlayerToLobby(match.players[i])
+                kickedCount = kickedCount + 1
+            end
+        end
+    end
+    
+    activeMatches = {}
+    
+    for mode, queue in pairs(queues) do
+        for i = 1, #queue do
+            if queue[i] > 0 and GetPlayerPing(queue[i]) > 0 then
+                TriggerClientEvent('pvp:searchCancelled', queue[i])
+                kickedCount = kickedCount + 1
+            end
+        end
+        queues[mode] = {}
+    end
+    
+    playersInQueue = {}
+    playerCurrentMatch = {}
+    playerWasSoloBeforeMatch = {}
+    playerLastHeartbeat = {}
+    
+    print('[PVP] ' .. kickedCount .. ' joueurs forces au lobby')
+end, false)
+
+RegisterCommand('pvpstatus', function(source)
+    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
+        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+        return
+    end
+    
+    local matchCount = 0
+    local playersInMatchCount = 0
+    
+    for _, match in pairs(activeMatches) do
+        matchCount = matchCount + 1
+        playersInMatchCount = playersInMatchCount + #match.players
+    end
+    
+    local totalInQueue = 0
+    for _, queue in pairs(queues) do
+        totalInQueue = totalInQueue + #queue
+    end
+    
+    print('[PVP] Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue)
+end, false)
+
+DebugSuccess('Systeme PVP charge (VERSION 4.8.0 - FIX CRASH CRITIQUE - RACE CONDITION)')
