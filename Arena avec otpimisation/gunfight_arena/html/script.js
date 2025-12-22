@@ -1,7 +1,6 @@
 // ================================
-// GUNFIGHT ARENA - SCRIPT.JS (VERSION WEBP OPTIMISÉE)
+// GUNFIGHT ARENA - SCRIPT.JS (VERSION PROFESSIONNELLE)
 // Système d'onglets et interface plein écran
-// ✅ Support WebP avec fallback PNG
 // ================================
 
 // ================================
@@ -9,30 +8,6 @@
 // ================================
 let currentZoneData = [];
 let currentActiveTab = 'zones';
-
-// ================================
-// FONCTION : VÉRIFIER LE SUPPORT WEBP
-// ================================
-function supportsWebP() {
-    const elem = document.createElement('canvas');
-    if (!!(elem.getContext && elem.getContext('2d'))) {
-        return elem.toDataURL('image/webp').indexOf('data:image/webp') === 0;
-    }
-    return false;
-}
-
-const WEBP_SUPPORT = supportsWebP();
-
-// ================================
-// FONCTION : OBTENIR LE CHEMIN D'IMAGE CORRECT
-// ================================
-function getImagePath(imagePath) {
-    // Si le navigateur ne supporte pas WebP, utiliser PNG
-    if (!WEBP_SUPPORT && imagePath.endsWith('.webp')) {
-        return imagePath.replace('.webp', '.png');
-    }
-    return imagePath;
-}
 
 // ================================
 // EVENT LISTENER - NUI MESSAGES
@@ -194,11 +169,8 @@ function renderZones() {
             card.setAttribute("data-full", "true");
         }
 
-        // ✅ Utilisation de getImagePath pour gérer le fallback WebP/PNG
-        const imagePath = getImagePath(zone.image || 'images/default.webp');
-
         card.innerHTML = `
-            <img class="zone-image" src="${imagePath}" alt="${zone.label || 'Zone ' + zone.zone}" onerror="this.src='images/default.png'">
+            <img class="zone-image" src="${zone.image || 'images/default.png'}" alt="${zone.label || 'Zone ' + zone.zone}">
             <div class="zone-info">
                 <div class="zone-text">${zone.label || 'Zone ' + zone.zone}</div>
                 <div class="zone-players">

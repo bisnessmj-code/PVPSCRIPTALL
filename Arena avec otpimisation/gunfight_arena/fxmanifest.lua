@@ -1,12 +1,13 @@
 
+
 fx_version 'cerulean'
 game 'gta5'
 
 shared_script '@es_extended/imports.lua'
 
-description 'Gunfight Arena - v4.3 OPTIMISÉ WEBP'
+description 'Gunfight Arena - v4.1 SÉCURISÉ'
 author 'kichta'
-version '4.3.0'
+version '4.1.0'
 
 -- ================================================================================================
 -- MODULE DE SÉCURITÉ (Chargé en premier - IMPORTANT L'ORDRE)
@@ -44,12 +45,12 @@ server_scripts {
     '@mysql-async/lib/MySQL.lua',
     'bridge_inventory_server.lua',
     'server.lua',
-    'server_security.lua',
-    'discord_leaderboard_secure.lua'
+    'server_security.lua',           -- Commandes admin sécurisées
+    'discord_leaderboard_secure.lua' -- Version sécurisée du leaderboard
 }
 
 -- ================================================================================================
--- INTERFACE (NUI) - IMAGES AU FORMAT WEBP
+-- INTERFACE (NUI)
 -- ================================================================================================
 ui_page 'html/index.html'
 
@@ -57,21 +58,18 @@ files {
     'html/index.html',
     'html/style.css',
     'html/script.js',
-    -- ✅ Images optimisées au format WebP
-    'html/images/zone1.webp',
-    'html/images/zone2.webp',
-    'html/images/zone3.webp',
-    'html/images/zone4.webp',
-    'html/images/zone5.webp',
-    'html/images/zone6.webp',
-    'html/images/zone7.webp',
-    'html/images/zone8.webp',
-    'html/images/zone9.webp',
-    'html/images/zone10.webp',
-    -- Logo (peut rester en PNG ou passer en WebP)
-    'html/images/logo.wep',
-    -- Image par défaut
-    'html/images/default.webp'
+    'html/images/zone1.png',
+    'html/images/zone2.png',
+    'html/images/zone3.png',
+    'html/images/zone4.png',
+    'html/images/zone5.png',
+    'html/images/zone6.png',
+    'html/images/zone7.png',
+    'html/images/zone8.png',
+    'html/images/zone9.png',
+    'html/images/zone10.png',
+    'html/images/logo.png',
+    'html/images/default.png'
 }
 
 -- ================================================================================================
