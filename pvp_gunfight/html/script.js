@@ -1,4 +1,4 @@
-console.log('[PVP UI] Script chargé - Version 4.3.0 - Délai Animation Round 1.5s');
+console.log('[PVP UI] Script chargé - Version 4.6.0 - ULTRA-OPTIMISÉ');
 
 // ========================================
 // VARIABLES GLOBALES
@@ -19,27 +19,30 @@ let currentStatsMode = '1v1';
 let currentLeaderboardMode = '1v1';
 let allModeStats = null;
 
-// ========================================
+// 🆕 VARIABLES STATS QUEUES (OPTIMISÉES)
+let currentQueueStats = {
+    '1v1': 0,
+    '2v2': 0,
+    '3v3': 0,
+    '4v4': 0
+};
+
+// 🆕 FLAG UI OUVERTE
+let isUIOpen = false;
+
 // VARIABLES GLOBALES KILLFEED
-// ========================================
 let killfeedItems = [];
 const MAX_KILLFEED_ITEMS = 5;
-const KILLFEED_DURATION = 5000; // 5 secondes
+const KILLFEED_DURATION = 5000;
 
-// ========================================
-// 🆕 VARIABLES POUR DÉLAI ANIMATIONS
-// ========================================
+// VARIABLES POUR DÉLAI ANIMATIONS
 let roundEndTimer = null;
-const ROUND_END_ANIMATION_DELAY = 1500; // 1.5 secondes
+const ROUND_END_ANIMATION_DELAY = 1500;
 
-// ========================================
 // AVATAR PAR DÉFAUT
-// ========================================
 const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
-// ========================================
 // RANGS PAR ELO
-// ========================================
 const RANKS = [
     { id: 1, name: "Bronze", min: 0, max: 999, color: "#cd7f32" },
     { id: 2, name: "Argent", min: 1000, max: 1499, color: "#c0c0c0" },
@@ -61,40 +64,64 @@ function getRankByElo(elo) {
 function handleAvatarError(imgElement) {
     imgElement.onerror = function() {
         this.src = DEFAULT_AVATAR;
-        console.log('[PVP UI] Erreur chargement avatar, fallback sur défaut');
     };
+}
+
+// ========================================
+// 🆕 FONCTION: METTRE À JOUR L'AFFICHAGE DES STATS QUEUES
+// ========================================
+function updateQueueDisplay() {
+    const modes = ['1v1', '2v2', '3v3', '4v4'];
+    
+    modes.forEach(mode => {
+        const queueInfo = document.getElementById(`queue-${mode}`);
+        const queueCount = queueInfo ? queueInfo.querySelector('.queue-count') : null;
+        
+        if (queueInfo && queueCount) {
+            const count = currentQueueStats[mode] || 0;
+            
+            // 🆕 NE METTRE À JOUR QUE SI CHANGEMENT
+            if (queueCount.textContent !== count.toString()) {
+                queueCount.textContent = count;
+                
+                // Animation uniquement si changement
+                if (count > 0) {
+                    queueInfo.classList.add('has-players');
+                    queueInfo.classList.add('animate-in');
+                    
+                    setTimeout(() => {
+                        queueInfo.classList.remove('animate-in');
+                    }, 300);
+                } else {
+                    queueInfo.classList.remove('has-players');
+                }
+            }
+        }
+    });
 }
 
 // ========================================
 // GESTION DES MESSAGES DEPUIS LUA
 // ========================================
 window.addEventListener('message', function(event) {
-    console.log('[PVP UI] Message reçu:', event.data);
     const data = event.data;
     
     if (data.action === 'openUI') {
-        console.log('[PVP UI] Ouverture de l\'interface');
         openUI(data.isSearching || false);
     } else if (data.action === 'closeUI') {
-        console.log('[PVP UI] Fermeture de l\'interface (depuis Lua)');
         closeUIVisual();
     } else if (data.action === 'updateGroup') {
-        console.log('[PVP UI] Mise à jour du groupe:', data.group);
         updateGroupDisplay(data.group);
     } else if (data.action === 'showInvite') {
-        console.log('[PVP UI] Invitation reçue de:', data.inviterName);
         addInvitationToQueue(data.inviterName, data.inviterId, data.inviterAvatar);
     } else if (data.action === 'searchStarted') {
-        console.log('[PVP UI] Recherche démarrée:', data.mode);
         showSearchStatus(data.mode);
     } else if (data.action === 'updateSearchTimer') {
         updateSearchTimer(data.elapsed);
     } else if (data.action === 'matchFound') {
-        console.log('[PVP UI] Match trouvé!');
         hideSearchStatus();
         isInMatch = true;
     } else if (data.action === 'searchCancelled') {
-        console.log('[PVP UI] Recherche annulée');
         hideSearchStatus();
         
         const readyButton = document.getElementById('ready-btn');
@@ -103,7 +130,6 @@ window.addEventListener('message', function(event) {
             readyButton.style.opacity = '1';
             readyButton.style.cursor = 'pointer';
             readyButton.title = '';
-            console.log('[PVP UI] ✅ Bouton Prêt réactivé après annulation');
         }
     } else if (data.action === 'showRoundStart') {
         showRoundStart(data.round);
@@ -112,8 +138,6 @@ window.addEventListener('message', function(event) {
     } else if (data.action === 'showGo') {
         showGo();
     } else if (data.action === 'showRoundEnd') {
-        // 🆕 DÉLAI DE 1.5 SECONDES AVANT L'ANIMATION
-        console.log('[PVP UI] ⏱️ Délai de 1.5s avant affichage round end...');
         showRoundEnd(data.winner, data.score, data.playerTeam, data.isVictory);
     } else if (data.action === 'showMatchEnd') {
         showMatchEnd(data.victory, data.score, data.playerTeam);
@@ -125,10 +149,11 @@ window.addEventListener('message', function(event) {
     } else if (data.action === 'hideScoreHUD') {
         hideScoreHUD();
     } else if (data.action === 'closeInvitationsPanel') {
-        console.log('[PVP UI] Fermeture forcée du panneau d\'invitations');
         hideInvitationsPanel();
     } else if (data.action === 'updateQueueStats') {
-        updateQueueStats(data.stats);
+        // 🆕 TRAITEMENT SILENCIEUX
+        currentQueueStats = data.stats || currentQueueStats;
+        updateQueueDisplay();
     } else if (data.action === 'showKillfeed') {
         addKillfeed(data.killerName, data.victimName, data.weapon, data.isHeadshot);
     }
@@ -139,25 +164,36 @@ window.addEventListener('message', function(event) {
 // ========================================
 
 function openUI(isSearching = false) {
-    console.log('[PVP UI] ✨ openUI() appelée - VERSION 4.3.0');
     document.getElementById('container').classList.remove('hidden');
+    isUIOpen = true;
     
     if (isSearching) {
-        console.log('[PVP UI] 🔍 Réouverture pendant recherche - Affichage écran matchmaking');
         showSearchScreen();
     }
     
+    // 🆕 DEMANDER LES STATS UNE SEULE FOIS À L'OUVERTURE
+    requestQueueStats();
+    
     loadStatsWithCallback(function() {
-        console.log('[PVP UI] ✅ Stats chargées, myAvatar mis à jour:', myAvatar);
         loadGroupInfo();
     });
-    
-    console.log('[PVP UI] Interface ouverte');
+}
+
+// 🆕 FONCTION: DEMANDER LES STATS QUEUES (SILENCIEUSE)
+function requestQueueStats() {
+    fetch(`https://${GetParentResourceName()}/getQueueStats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    }).then(resp => resp.json()).then(stats => {
+        currentQueueStats = stats;
+        updateQueueDisplay();
+    }).catch(err => {
+        // Erreur silencieuse
+    });
 }
 
 function showSearchScreen() {
-    console.log('[PVP UI] Affichage de l\'écran de recherche');
-    
     const mainMenu = document.querySelector('.lobby-content');
     if (mainMenu) {
         mainMenu.style.display = 'none';
@@ -166,12 +202,12 @@ function showSearchScreen() {
     const searchStatus = document.getElementById('search-status');
     if (searchStatus) {
         searchStatus.classList.remove('hidden');
-        console.log('[PVP UI] 🔍 Écran de recherche affiché');
     }
 }
 
 function closeUIVisual() {
     document.getElementById('container').classList.add('hidden');
+    isUIOpen = false;
 }
 
 function closeUI() {
@@ -179,7 +215,7 @@ function closeUI() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
-    }).catch(err => console.error('[PVP UI] Erreur closeUI:', err));
+    }).catch(err => {});
 }
 
 // ========================================
@@ -284,7 +320,7 @@ function acceptInvitation(inviterId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ inviterId: inviterId })
-    }).catch(err => console.error('[PVP UI] Erreur acceptation:', err));
+    }).catch(err => {});
     
     removeInvitation(inviterId);
     renderInvitationsPanel();
@@ -354,6 +390,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             loadLeaderboardByMode(currentLeaderboardMode);
         } else if (tabName === 'lobby') {
             loadGroupInfo();
+            // 🆕 RAFRAÎCHIR LES STATS QUEUES (UNE SEULE FOIS)
+            requestQueueStats();
         }
     });
 });
@@ -432,7 +470,7 @@ document.getElementById('confirm-invite-btn').addEventListener('click', function
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetId: targetId })
-    }).catch(err => console.error('[PVP UI] Erreur invitation:', err));
+    }).catch(err => {});
     
     input.value = '';
     document.getElementById('invite-player-popup').classList.add('hidden');
@@ -452,7 +490,6 @@ document.getElementById('ready-btn').addEventListener('click', function() {
     const isSearching = searchStatus && !searchStatus.classList.contains('hidden');
     
     if (isSearching) {
-        console.log('[PVP UI] ⚠️ Impossible de changer l\'état Prêt pendant la recherche');
         return;
     }
     
@@ -460,7 +497,7 @@ document.getElementById('ready-btn').addEventListener('click', function() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
-    }).catch(err => console.error('[PVP UI] Erreur toggle ready:', err));
+    }).catch(err => {});
 });
 
 document.getElementById('leave-group-btn').addEventListener('click', function() {
@@ -468,7 +505,7 @@ document.getElementById('leave-group-btn').addEventListener('click', function() 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
-    }).catch(err => console.error('[PVP UI] Erreur leaveGroup:', err));
+    }).catch(err => {});
 });
 
 // ========================================
@@ -614,7 +651,6 @@ function updateGroupDisplay(group) {
         readyBtn.style.opacity = '0.5';
         readyBtn.style.cursor = 'not-allowed';
         readyBtn.title = 'Annulez d\'abord la recherche';
-        console.log('[PVP UI] 🔒 Bouton Prêt désactivé (recherche active)');
     } else {
         readyBtn.disabled = false;
         readyBtn.style.opacity = '1';
@@ -630,7 +666,7 @@ function kickPlayer(targetId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetId: targetId })
-    }).catch(err => console.error('[PVP UI] Erreur kick:', err));
+    }).catch(err => {});
 }
 
 function updateSearchButton() {
@@ -689,7 +725,7 @@ document.getElementById('search-btn').addEventListener('click', function() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: selectedMode })
-    }).catch(err => console.error('[PVP UI] Erreur joinQueue:', err));
+    }).catch(err => {});
 });
 
 function showSearchStatus(mode) {
@@ -720,7 +756,7 @@ document.getElementById('cancel-search-btn').addEventListener('click', function(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
-    }).catch(err => console.error('[PVP UI] Erreur annulation:', err));
+    }).catch(err => {});
 });
 
 // ========================================
@@ -747,14 +783,11 @@ document.querySelectorAll('.stats-mode-btn').forEach(btn => {
 });
 
 function loadAllModeStats() {
-    console.log('[PVP UI] 📊 Chargement de toutes les stats par mode...');
-    
     fetch(`https://${GetParentResourceName()}/getPlayerAllModeStats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
     }).then(resp => resp.json()).then(data => {
-        console.log('[PVP UI] ✅ Stats par mode reçues:', data);
         allModeStats = data;
         
         if (data && data.avatar) {
@@ -769,31 +802,21 @@ function loadAllModeStats() {
         if (data && data.modes && data.modes[currentStatsMode]) {
             displayModeStats(data.modes[currentStatsMode]);
         }
-    }).catch(err => {
-        console.error('[PVP UI] ❌ Erreur chargement stats par mode:', err);
-    });
+    }).catch(err => {});
 }
 
 function loadStatsByMode(mode) {
-    console.log('[PVP UI] 📊 Chargement stats pour le mode:', mode);
-    
     fetch(`https://${GetParentResourceName()}/getPlayerStatsByMode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: mode })
     }).then(resp => resp.json()).then(stats => {
-        console.log('[PVP UI] ✅ Stats reçues pour', mode, ':', stats);
         displayModeStats(stats);
-    }).catch(err => {
-        console.error('[PVP UI] ❌ Erreur chargement stats:', err);
-    });
+    }).catch(err => {});
 }
 
 function displayModeStats(stats) {
-    if (!stats) {
-        console.error('[PVP UI] Stats null ou undefined');
-        return;
-    }
+    if (!stats) return;
     
     const elo = stats.elo || 0;
     const kills = stats.kills || 0;
@@ -826,8 +849,6 @@ function displayModeStats(stats) {
         rankEl.textContent = rank.name;
         rankEl.style.color = rank.color;
     }
-    
-    console.log('[PVP UI] ✅ Stats affichées avec succès');
 }
 
 // ========================================
@@ -847,17 +868,13 @@ document.querySelectorAll('.lb-mode-btn').forEach(btn => {
 });
 
 function loadLeaderboardByMode(mode) {
-    console.log('[PVP UI] 🏆 Chargement leaderboard pour le mode:', mode);
-    
     fetch(`https://${GetParentResourceName()}/getLeaderboardByMode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: mode })
     }).then(resp => resp.json()).then(leaderboard => {
-        console.log('[PVP UI] ✅ Leaderboard reçu:', leaderboard.length, 'entrées');
         displayLeaderboard(leaderboard);
     }).catch(err => {
-        console.error('[PVP UI] ❌ Erreur chargement leaderboard:', err);
         displayLeaderboard([]);
     });
 }
@@ -926,7 +943,6 @@ function loadStatsWithCallback(callback) {
         
         if (callback) callback();
     }).catch(err => {
-        console.error('[PVP UI] ❌ Erreur chargement stats:', err);
         if (callback) callback();
     });
 }
@@ -971,23 +987,13 @@ function showGo() {
     setTimeout(() => overlay.classList.add('hidden'), 1000);
 }
 
-// ========================================
-// 🆕 FONCTION: AFFICHER FIN DE ROUND (AVEC DÉLAI 1.5s)
-// ========================================
 function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
-    console.log('[PVP UI] 🎬 showRoundEnd appelée - Délai de 1.5s avant affichage');
-    
-    // Annuler le timer précédent s'il existe
     if (roundEndTimer) {
         clearTimeout(roundEndTimer);
         roundEndTimer = null;
-        console.log('[PVP UI] ⏱️ Timer précédent annulé');
     }
     
-    // DÉLAI DE 1.5 SECONDES AVANT AFFICHAGE
     roundEndTimer = setTimeout(() => {
-        console.log('[PVP UI] ✅ Délai écoulé - Affichage animation round end');
-        
         const overlay = document.getElementById('round-end-overlay');
         const title = document.getElementById('round-end-title');
         const subtitle = document.getElementById('round-end-subtitle');
@@ -1007,26 +1013,20 @@ function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
         
         overlay.classList.remove('hidden');
         
-        // Auto-hide après 1.5 secondes
         setTimeout(() => {
             overlay.classList.add('hidden');
-            console.log('[PVP UI] 🎬 Animation round end masquée');
         }, 1500);
         
         roundEndTimer = null;
-    }, ROUND_END_ANIMATION_DELAY); // 1500ms = 1.5 secondes
-    
-    console.log('[PVP UI] ⏱️ Timer de 1.5s démarré (ID:', roundEndTimer, ')');
+    }, ROUND_END_ANIMATION_DELAY);
 }
 
 function showMatchEnd(victory, score, playerTeam) {
     clearAllKillfeeds();
     
-    // Annuler le timer de round end s'il existe
     if (roundEndTimer) {
         clearTimeout(roundEndTimer);
         roundEndTimer = null;
-        console.log('[PVP UI] ⏱️ Timer round end annulé (match terminé)');
     }
     
     const overlay = document.getElementById('match-end-overlay');
@@ -1074,13 +1074,8 @@ function updateScoreHUD(score, round) {
 // ========================================
 
 function addKillfeed(killerName, victimName, weapon, isHeadshot) {
-    console.log('[KILLFEED]', killerName, 'eliminated', victimName, 'with', weapon, isHeadshot ? '(HEADSHOT)' : '');
-    
     const container = document.getElementById('killfeed-container');
-    if (!container) {
-        console.error('[KILLFEED] Container introuvable');
-        return;
-    }
+    if (!container) return;
     
     const item = document.createElement('div');
     item.className = 'killfeed-item';
@@ -1174,38 +1169,4 @@ function GetParentResourceName() {
     return 'pvp_gunfight';
 }
 
-// ========================================
-// 🆕 FONCTION: METTRE À JOUR STATS QUEUES
-// ========================================
-function updateQueueStats(stats) {
-    console.log('[PVP UI] 📊 Mise à jour stats queues:', stats);
-    
-    const modes = ['1v1', '2v2', '3v3', '4v4'];
-    
-    modes.forEach(mode => {
-        const queueInfo = document.getElementById(`queue-${mode}`);
-        const queueCount = queueInfo ? queueInfo.querySelector('.queue-count') : null;
-        
-        if (queueInfo && queueCount) {
-            const count = stats[mode] || 0;
-            queueCount.textContent = count;
-            
-            // Ajouter/retirer la classe "has-players" selon le nombre
-            if (count > 0) {
-                queueInfo.classList.add('has-players');
-                queueInfo.classList.add('animate-in');
-                
-                // Retirer l'animation après qu'elle soit jouée
-                setTimeout(() => {
-                    queueInfo.classList.remove('animate-in');
-                }, 300);
-            } else {
-                queueInfo.classList.remove('has-players');
-            }
-            
-            console.log(`[PVP UI] Mode ${mode}: ${count} joueur(s) en recherche`);
-        }
-    });
-}
-
-console.log('[PVP UI] ✅ Script initialisé - Version 4.4.0 - Stats Queues en Temps Réel');
+console.log('[PVP UI] ✅ Script initialisé - Version 4.6.0 - ULTRA-OPTIMISÉ (EVENT-DRIVEN)');

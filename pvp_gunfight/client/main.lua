@@ -607,6 +607,8 @@ RegisterNetEvent('pvp:matchFound', function()
     SendNUIMessage({ action = 'matchFound' })
 end)
 
+
+
 RegisterNetEvent('pvp:searchCancelled', function()
     SetInQueue(false)
     
@@ -880,6 +882,16 @@ RegisterNetEvent('pvp:forceReturnToLobby', function()
     _FreezeEntityPosition(ped, false)
     
     _DoScreenFadeIn(500)
+end)
+
+-- ========================================
+-- 🆕 EVENT: MISE À JOUR STATS QUEUES
+-- ========================================
+RegisterNetEvent('pvp:updateQueueStats', function(stats)
+    SendNUIMessage({
+        action = 'updateQueueStats',
+        stats = stats
+    })
 end)
 
 -- ========================================
