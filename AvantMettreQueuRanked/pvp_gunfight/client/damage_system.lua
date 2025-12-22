@@ -1,15 +1,16 @@
 -- ========================================
 -- PVP GUNFIGHT - SYSTÈME DE DÉGÂTS UNIFIÉ
--- Version 2.0.0 - FUSION HEADSHOT + DAMAGE SYSTEM
+-- Version 2.1.0 - DÉSACTIVATION CASQUES
 -- ========================================
 -- ✅ UN SEUL handler gameEventTriggered
 -- ✅ Tracking multi-niveaux robuste (headshot_system)
 -- ✅ Anti-friendly fire (damage_system)
 -- ✅ Headshot one-shot kill garanti
 -- ✅ AUCUN "Suicide" erroné
+-- ✅ NOUVEAUTÉ: Désactivation protection casques
 -- ========================================
 
-DebugClient('Module Damage System chargé (UNIFIÉ v2.0.0)')
+DebugClient('Module Damage System chargé (UNIFIÉ v2.1.0 - Casques désactivés)')
 
 -- ========================================
 -- CACHE DES NATIVES
@@ -33,6 +34,9 @@ local _DoesEntityExist = DoesEntityExist
 local _IsPedAPlayer = IsPedAPlayer
 local _GetPedSourceOfDeath = GetPedSourceOfDeath
 local _GetPedCauseOfDeath = GetPedCauseOfDeath
+local _SetPedHelmet = SetPedHelmet
+local _SetPedCanLosePropsOnDamage = SetPedCanLosePropsOnDamage
+local _SetPedConfigFlag = SetPedConfigFlag
 
 -- ========================================
 -- CONFIGURATION
@@ -74,6 +78,34 @@ local teammateServerIds = {}
 -- État système
 local damageSystemActive = false
 local lastHealthCheck = {health = 200, armour = 100, time = 0}
+
+-- ========================================
+-- 🆕 FONCTION: DÉSACTIVER PROTECTION CASQUES
+-- ========================================
+local function DisableHelmetProtection(ped)
+    -- 1. Désactiver la capacité du casque à protéger
+    _SetPedHelmet(ped, false)
+    
+    -- 2. Désactiver la perte de props (empêche le casque de tomber)
+    _SetPedCanLosePropsOnDamage(ped, false, 0)
+    
+    -- 3. Flag CONFIG: Désactiver l'armure du casque (CRITICAL)
+    _SetPedConfigFlag(ped, 438, true) -- CPED_CONFIG_FLAG_DisableHelmetArmor
+    
+    DebugClient('🎩 Protection casque DÉSACTIVÉE pour ped %d', ped)
+end
+
+-- ========================================
+-- 🆕 FONCTION: RÉACTIVER PROTECTION CASQUES
+-- ========================================
+local function EnableHelmetProtection(ped)
+    -- Réactiver la protection (état vanilla)
+    _SetPedHelmet(ped, true)
+    _SetPedCanLosePropsOnDamage(ped, true, 0)
+    _SetPedConfigFlag(ped, 438, false) -- Réactiver armure casque
+    
+    DebugClient('🎩 Protection casque RÉACTIVÉE pour ped %d', ped)
+end
 
 -- ========================================
 -- FONCTION: ENREGISTRER DÉGÂT
@@ -251,6 +283,27 @@ CreateThread(function()
         else
             _Wait(1000)
             UpdateTeammateServerIds()
+        end
+    end
+end)
+
+-- ========================================
+-- 🆕 THREAD: DÉSACTIVATION CONTINUE DES CASQUES
+-- ========================================
+CreateThread(function()
+    DebugSuccess('Thread désactivation casques démarré')
+    
+    while true do
+        if not IsInMatch() or not damageSystemActive then
+            _Wait(1000)
+        else
+            _Wait(500) -- Vérifier toutes les 500ms
+            
+            local ped = _PlayerPedId()
+            
+            -- Forcer la désactivation (au cas où le jeu réactive)
+            _SetPedConfigFlag(ped, 438, true)
+            _SetPedHelmet(ped, false)
         end
     end
 end)
@@ -435,8 +488,11 @@ local function EnableDamageSystem()
         _SetWeaponDamageModifier(weaponHash, multiplier)
     end
     
-    -- Réinitialiser le suivi
+    -- 🆕 DÉSACTIVER LES CASQUES
     local ped = _PlayerPedId()
+    DisableHelmetProtection(ped)
+    
+    -- Réinitialiser le suivi
     lastHealthCheck = {
         health = _GetEntityHealth(ped),
         armour = _GetPedArmour(ped),
@@ -462,6 +518,10 @@ local function DisableDamageSystem()
     for weaponHash, _ in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, 1.0)
     end
+    
+    -- 🆕 RÉACTIVER LES CASQUES
+    local ped = _PlayerPedId()
+    EnableHelmetProtection(ped)
     
     recentDamageHistory = {}
     teammateServerIds = {}
@@ -572,6 +632,7 @@ RegisterCommand('hsinfo', function()
     print(string.format('Historique: %d entrées', #recentDamageHistory))
     print(string.format('Cache attacker: %s', lastKnownAttacker and 'Actif' or 'Vide'))
     print(string.format('Coéquipiers: %d', CountTableKeys(teammateServerIds)))
+    print('^5[CASQUES]^7 Protection désactivée: ' .. (damageSystemActive and 'OUI' or 'NON'))
 end, false)
 
 RegisterCommand('hsclear', function()
@@ -595,8 +656,9 @@ end
 exports('EnableDamageSystem', EnableDamageSystem)
 exports('DisableDamageSystem', DisableDamageSystem)
 
-DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.0.0)')
+DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.1.0)')
 DebugSuccess('✅ Headshot one-shot: ACTIF')
 DebugSuccess('✅ Tracking multi-niveaux: ACTIF')
 DebugSuccess('✅ Anti-friendly fire: ACTIF')
+DebugSuccess('✅ Protection casques: DÉSACTIVÉE')
 DebugSuccess('✅ Aucun "Suicide" erroné')
