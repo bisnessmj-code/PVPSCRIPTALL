@@ -1,4 +1,4 @@
-console.log('[PVP UI] Script chargé - Version 4.2.0 - Killfeed System Intégré');
+console.log('[PVP UI] Script chargé - Version 4.3.0 - Délai Animation Round 1.5s');
 
 // ========================================
 // VARIABLES GLOBALES
@@ -25,6 +25,12 @@ let allModeStats = null;
 let killfeedItems = [];
 const MAX_KILLFEED_ITEMS = 5;
 const KILLFEED_DURATION = 5000; // 5 secondes
+
+// ========================================
+// 🆕 VARIABLES POUR DÉLAI ANIMATIONS
+// ========================================
+let roundEndTimer = null;
+const ROUND_END_ANIMATION_DELAY = 1500; // 1.5 secondes
 
 // ========================================
 // AVATAR PAR DÉFAUT
@@ -106,6 +112,8 @@ window.addEventListener('message', function(event) {
     } else if (data.action === 'showGo') {
         showGo();
     } else if (data.action === 'showRoundEnd') {
+        // 🆕 DÉLAI DE 1.5 SECONDES AVANT L'ANIMATION
+        console.log('[PVP UI] ⏱️ Délai de 1.5s avant affichage round end...');
         showRoundEnd(data.winner, data.score, data.playerTeam, data.isVictory);
     } else if (data.action === 'showMatchEnd') {
         showMatchEnd(data.victory, data.score, data.playerTeam);
@@ -129,7 +137,7 @@ window.addEventListener('message', function(event) {
 // ========================================
 
 function openUI(isSearching = false) {
-    console.log('[PVP UI] ✨ openUI() appelée - VERSION 4.2.0');
+    console.log('[PVP UI] ✨ openUI() appelée - VERSION 4.3.0');
     document.getElementById('container').classList.remove('hidden');
     
     if (isSearching) {
@@ -961,30 +969,63 @@ function showGo() {
     setTimeout(() => overlay.classList.add('hidden'), 1000);
 }
 
+// ========================================
+// 🆕 FONCTION: AFFICHER FIN DE ROUND (AVEC DÉLAI 1.5s)
+// ========================================
 function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
-    const overlay = document.getElementById('round-end-overlay');
-    const title = document.getElementById('round-end-title');
-    const subtitle = document.getElementById('round-end-subtitle');
+    console.log('[PVP UI] 🎬 showRoundEnd appelée - Délai de 1.5s avant affichage');
     
-    if (isVictory) {
-        title.textContent = 'VICTOIRE';
-        title.className = 'round-end-title victory';
-        subtitle.textContent = 'Manche remportée !';
-    } else {
-        title.textContent = 'DÉFAITE';
-        title.className = 'round-end-title defeat';
-        subtitle.textContent = 'Manche perdue';
+    // Annuler le timer précédent s'il existe
+    if (roundEndTimer) {
+        clearTimeout(roundEndTimer);
+        roundEndTimer = null;
+        console.log('[PVP UI] ⏱️ Timer précédent annulé');
     }
     
-    document.getElementById('round-score-team1').textContent = score.team1;
-    document.getElementById('round-score-team2').textContent = score.team2;
+    // DÉLAI DE 1.5 SECONDES AVANT AFFICHAGE
+    roundEndTimer = setTimeout(() => {
+        console.log('[PVP UI] ✅ Délai écoulé - Affichage animation round end');
+        
+        const overlay = document.getElementById('round-end-overlay');
+        const title = document.getElementById('round-end-title');
+        const subtitle = document.getElementById('round-end-subtitle');
+        
+        if (isVictory) {
+            title.textContent = 'VICTOIRE';
+            title.className = 'round-end-title victory';
+            subtitle.textContent = 'Manche remportée !';
+        } else {
+            title.textContent = 'DÉFAITE';
+            title.className = 'round-end-title defeat';
+            subtitle.textContent = 'Manche perdue';
+        }
+        
+        document.getElementById('round-score-team1').textContent = score.team1;
+        document.getElementById('round-score-team2').textContent = score.team2;
+        
+        overlay.classList.remove('hidden');
+        
+        // Auto-hide après 1.5 secondes
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            console.log('[PVP UI] 🎬 Animation round end masquée');
+        }, 1500);
+        
+        roundEndTimer = null;
+    }, ROUND_END_ANIMATION_DELAY); // 1500ms = 1.5 secondes
     
-    overlay.classList.remove('hidden');
-    setTimeout(() => overlay.classList.add('hidden'), 1500);
+    console.log('[PVP UI] ⏱️ Timer de 1.5s démarré (ID:', roundEndTimer, ')');
 }
 
 function showMatchEnd(victory, score, playerTeam) {
-    clearAllKillfeeds(); // 🔧 NOUVEAU: Nettoyer killfeed en fin de match
+    clearAllKillfeeds();
+    
+    // Annuler le timer de round end s'il existe
+    if (roundEndTimer) {
+        clearTimeout(roundEndTimer);
+        roundEndTimer = null;
+        console.log('[PVP UI] ⏱️ Timer round end annulé (match terminé)');
+    }
     
     const overlay = document.getElementById('match-end-overlay');
     const result = document.getElementById('match-end-result');
@@ -1131,4 +1172,4 @@ function GetParentResourceName() {
     return 'pvp_gunfight';
 }
 
-console.log('[PVP UI] ✅ Script initialisé - Version 4.2.0 - Killfeed System Intégré');
+console.log('[PVP UI] ✅ Script initialisé - Version 4.3.0 - Délai Animation Round 1.5s');

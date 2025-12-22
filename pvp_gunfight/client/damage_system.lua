@@ -1,9 +1,15 @@
 -- ========================================
--- PVP GUNFIGHT - SYSTÈME DE DÉGÂTS
--- Version 1.6.0 - FIX HEADSHOT TEAM KILL
+-- PVP GUNFIGHT - SYSTÈME DE DÉGÂTS UNIFIÉ
+-- Version 2.0.0 - FUSION HEADSHOT + DAMAGE SYSTEM
+-- ========================================
+-- ✅ UN SEUL handler gameEventTriggered
+-- ✅ Tracking multi-niveaux robuste (headshot_system)
+-- ✅ Anti-friendly fire (damage_system)
+-- ✅ Headshot one-shot kill garanti
+-- ✅ AUCUN "Suicide" erroné
 -- ========================================
 
-DebugClient('Module Damage System chargé')
+DebugClient('Module Damage System chargé (UNIFIÉ v2.0.0)')
 
 -- ========================================
 -- CACHE DES NATIVES
@@ -23,13 +29,19 @@ local _GetGameTimer = GetGameTimer
 local _GetPlayerPed = GetPlayerPed
 local _GetPlayerFromServerId = GetPlayerFromServerId
 local _NetworkIsPlayerActive = NetworkIsPlayerActive
+local _DoesEntityExist = DoesEntityExist
+local _IsPedAPlayer = IsPedAPlayer
+local _GetPedSourceOfDeath = GetPedSourceOfDeath
+local _GetPedCauseOfDeath = GetPedCauseOfDeath
 
 -- ========================================
--- CONFIGURATION DÉGÂTS
+-- CONFIGURATION
 -- ========================================
 local DAMAGE_CONFIG = {
+    -- Dégâts normaux
     baseDamageMultiplier = 1.0,
     
+    -- Armes PVP
     weapons = {
         [GetHashKey('WEAPON_PISTOL50')] = 1.0,
         [GetHashKey('WEAPON_COMBATPISTOL')] = 1.0,
@@ -38,56 +50,121 @@ local DAMAGE_CONFIG = {
         [GetHashKey('WEAPON_HEAVYPISTOL')] = 1.0,
     },
     
-    headshotMultiplier = 1.0, 
+    -- HEADSHOT CONFIG
+    headshotEnabled = true,
+    headshotBone = 31086, -- Bone de la tête
+    headshotInstantKill = true, -- Mort instantanée
 }
 
 -- ========================================
--- ÉTAT
+-- SYSTÈME DE TRACKING MULTI-NIVEAUX
+-- (inspiré de headshot_system pour robustesse)
 -- ========================================
-local damageSystemActive = false
-local lastHealthCheck = {health = 200, armour = 100, time = 0}
-local lastDamageAttacker = nil
-local lastDamageTime = 0
+local recentDamageHistory = {}
+local MAX_DAMAGE_HISTORY = 50 -- Limite FIFO
+local DAMAGE_HISTORY_TIMEOUT = 3000 -- 3 secondes
 
--- 🔧 NOUVEAU: Blocage des headsots coéquipiers
-local recentTeammateHeadshot = false
-local recentTeammateHeadshotTime = 0
+local lastKnownAttacker = nil
+local lastKnownWeapon = nil
+local lastAttackerTime = 0
 
--- ========================================
--- 🔧 CACHE DES SERVER IDS COÉQUIPIERS
--- ========================================
+-- Cache coéquipiers
 local teammateServerIds = {}
 
+-- État système
+local damageSystemActive = false
+local lastHealthCheck = {health = 200, armour = 100, time = 0}
+
 -- ========================================
--- 🔧 FONCTION: METTRE À JOUR LA LISTE DES SERVER IDS COÉQUIPIERS
+-- FONCTION: ENREGISTRER DÉGÂT
 -- ========================================
-local function UpdateTeammateServerIds()
-    teammateServerIds = {}
+local function RecordDamage(attacker, weapon)
+    if not attacker or attacker == 0 or attacker == -1 then return end
+    if not _DoesEntityExist(attacker) then return end
+    if not _IsPedAPlayer(attacker) then return end
     
-    local teammates = GetTeammates()
-    if not teammates or #teammates == 0 then
-        DebugClient('🔍 Aucun coéquipier à enregistrer')
-        return
+    local currentTime = _GetGameTimer()
+    
+    -- Ajouter à l'historique (FIFO)
+    table.insert(recentDamageHistory, 1, {
+        attacker = attacker,
+        weapon = weapon,
+        time = currentTime
+    })
+    
+    -- Limiter taille
+    if #recentDamageHistory > MAX_DAMAGE_HISTORY then
+        table.remove(recentDamageHistory)
     end
     
-    for i = 1, #teammates do
-        local teammateServerId = teammates[i]
-        teammateServerIds[teammateServerId] = true
-        DebugClient('✅ Coéquipier enregistré: ServerId %d', teammateServerId)
-    end
+    -- Mettre à jour le cache rapide
+    lastKnownAttacker = attacker
+    lastKnownWeapon = weapon
+    lastAttackerTime = currentTime
     
-    DebugClient('📋 Total coéquipiers: %d', #teammates)
+    DebugClient('[TRACKING] Dégât enregistré - Attacker: %d | Weapon: %d | Time: %d', 
+        attacker, weapon or 0, currentTime)
 end
 
 -- ========================================
--- 🔧 FONCTION: VÉRIFIER SI UN PED EST UN COÉQUIPIER
+-- FONCTION: NETTOYER L'HISTORIQUE
+-- ========================================
+local function CleanupHistory()
+    local currentTime = _GetGameTimer()
+    local i = #recentDamageHistory
+    
+    while i > 0 do
+        if (currentTime - recentDamageHistory[i].time) > DAMAGE_HISTORY_TIMEOUT then
+            table.remove(recentDamageHistory, i)
+        end
+        i = i - 1
+    end
+end
+
+-- ========================================
+-- FONCTION: RÉCUPÉRER LE MEILLEUR ATTAQUANT
+-- (Système à 3 niveaux de priorité)
+-- ========================================
+local function GetBestAttacker(eventAttacker, eventWeapon)
+    local currentTime = _GetGameTimer()
+    
+    -- PRIORITÉ 1: Attaquant direct de l'event (temps réel)
+    if eventAttacker and eventAttacker ~= -1 and _DoesEntityExist(eventAttacker) and _IsPedAPlayer(eventAttacker) then
+        DebugClient('[ATTACKER] Priorité 1 (event direct)')
+        return eventAttacker, eventWeapon
+    end
+    
+    -- PRIORITÉ 2: Cache récent (< 1 seconde)
+    if lastKnownAttacker and (currentTime - lastAttackerTime) < 1000 then
+        if _DoesEntityExist(lastKnownAttacker) and _IsPedAPlayer(lastKnownAttacker) then
+            DebugClient('[ATTACKER] Priorité 2 (cache < 1s)')
+            return lastKnownAttacker, lastKnownWeapon
+        end
+    end
+    
+    -- PRIORITÉ 3: Historique (< 3 secondes)
+    for i = 1, #recentDamageHistory do
+        local record = recentDamageHistory[i]
+        if (currentTime - record.time) < DAMAGE_HISTORY_TIMEOUT then
+            if _DoesEntityExist(record.attacker) and _IsPedAPlayer(record.attacker) then
+                DebugClient('[ATTACKER] Priorité 3 (historique, entrée %d)', i)
+                return record.attacker, record.weapon
+            end
+        end
+    end
+    
+    DebugClient('[ATTACKER] ❌ Aucun attaquant trouvé')
+    return nil, nil
+end
+
+-- ========================================
+-- FONCTION: VÉRIFIER SI COÉQUIPIER
 -- ========================================
 local function IsTeammatePed(ped)
-    if not ped or not DoesEntityExist(ped) or not IsPedAPlayer(ped) then
+    if not ped or not _DoesEntityExist(ped) or not _IsPedAPlayer(ped) then
         return false
     end
     
-    -- Convertir PED -> ServerID
     local playerIndex = _NetworkGetPlayerIndexFromPed(ped)
     if not playerIndex or playerIndex == -1 then
         return false
@@ -98,84 +175,213 @@ local function IsTeammatePed(ped)
         return false
     end
     
-    -- Vérifier si ce serverId est dans la liste des coéquipiers
-    local isTeammate = teammateServerIds[serverId] == true
-    
-    -- Debug
-    if isTeammate then
-        DebugClient('🛡️ PED %d (ServerId: %d) = COÉQUIPIER', ped, serverId)
-    else
-        DebugClient('⚔️ PED %d (ServerId: %d) = ENNEMI', ped, serverId)
-    end
-    
-    return isTeammate
+    return teammateServerIds[serverId] == true
 end
 
 -- ========================================
--- 🔧 THREAD: SURVEILLANCE DÉGÂTS + RESTAURATION
+-- FONCTION: METTRE À JOUR LISTE COÉQUIPIERS
+-- ========================================
+local function UpdateTeammateServerIds()
+    teammateServerIds = {}
+    
+    local teammates = GetTeammates()
+    if not teammates or #teammates == 0 then
+        return
+    end
+    
+    for i = 1, #teammates do
+        local teammateServerId = teammates[i]
+        teammateServerIds[teammateServerId] = true
+        DebugClient('[TEAM] Coéquipier enregistré: ServerId %d', teammateServerId)
+    end
+    
+    DebugClient('[TEAM] Total coéquipiers: %d', #teammates)
+end
+
+-- ========================================
+-- 🔧 THREAD: SURVEILLANCE CONTINUE DES DÉGÂTS
+-- (Capture l'attaquant AVANT l'event gameEventTriggered)
 -- ========================================
 CreateThread(function()
-    DebugSuccess('Thread surveillance dégâts démarré')
+    DebugSuccess('Thread surveillance dégâts démarré (CRITIQUE)')
     
     while true do
         if not IsInMatch() or not damageSystemActive then
             _Wait(500)
-            lastDamageAttacker = nil
-            lastDamageTime = 0
-            recentTeammateHeadshot = false
         else
-            _Wait(0) -- CHAQUE FRAME
+            _Wait(0) -- CHAQUE FRAME en match
+            
+            local ped = _PlayerPedId()
+            
+            -- Vérifier si le joueur a reçu des dégâts
+            if HasEntityBeenDamagedByAnyPed(ped) then
+                local attacker = _GetPedSourceOfDeath(ped)
+                local weapon = _GetPedCauseOfDeath(ped)
+                
+                -- ENREGISTRER dans l'historique
+                RecordDamage(attacker, weapon)
+                
+                -- Nettoyer l'état
+                ClearEntityLastDamageEntity(ped)
+            end
+        end
+    end
+end)
+
+-- ========================================
+-- THREAD: NETTOYAGE PÉRIODIQUE HISTORIQUE
+-- ========================================
+CreateThread(function()
+    while true do
+        _Wait(1000)
+        CleanupHistory()
+    end
+end)
+
+-- ========================================
+-- THREAD: MISE À JOUR LISTE COÉQUIPIERS
+-- ========================================
+CreateThread(function()
+    DebugSuccess('Thread mise à jour coéquipiers démarré')
+    
+    while true do
+        if not IsInMatch() then
+            _Wait(2000)
+            teammateServerIds = {}
+        else
+            _Wait(1000)
+            UpdateTeammateServerIds()
+        end
+    end
+end)
+
+-- ========================================
+-- 🎯 EVENT UNIQUE: DÉTECTION HEADSHOT + DÉGÂTS
+-- (UN SEUL HANDLER = PAS DE RACE CONDITION)
+-- ========================================
+AddEventHandler('gameEventTriggered', function(eventName, eventData)
+    if eventName ~= 'CEventNetworkEntityDamage' then return end
+    if not IsInMatch() then return end
+    
+    local victim = eventData[1]
+    local attacker = eventData[2]
+    local weaponUsed = eventData[7]
+    local bone = eventData[3]
+    local isDead = eventData[4] == 1
+    
+    -- Seulement si c'est nous la victime
+    if victim ~= _PlayerPedId() then return end
+    
+    DebugClient('[EVENT] Dégât reçu - Attacker: %d | Bone: %d | Weapon: %d | Dead: %s', 
+        attacker or -1, bone or -1, weaponUsed or -1, tostring(isDead))
+    
+    -- Enregistrer dans l'historique (même si pas headshot)
+    if attacker and attacker ~= -1 then
+        RecordDamage(attacker, weaponUsed)
+    end
+    
+    -- ========================================
+    -- VÉRIFIER SI HEADSHOT
+    -- ========================================
+    local isHeadshot = (bone == DAMAGE_CONFIG.headshotBone)
+    
+    if isHeadshot and DAMAGE_CONFIG.headshotEnabled then
+        DebugClient('[HEADSHOT] 💀 HEADSHOT DÉTECTÉ!')
+        
+        -- Récupérer le MEILLEUR attaquant possible (3 priorités)
+        local finalAttacker, finalWeapon = GetBestAttacker(attacker, weaponUsed)
+        
+        if not finalAttacker then
+            DebugClient('[HEADSHOT] ❌ Aucun attaquant valide - HEADSHOT ANNULÉ')
+            return
+        end
+        
+        -- Vérifier si c'est un coéquipier
+        local isTeammate = IsTeammatePed(finalAttacker)
+        
+        if isTeammate then
+            DebugClient('[HEADSHOT] 🛡️ Headshot COÉQUIPIER - BLOQUÉ')
+            
+            -- Restaurer la santé immédiatement
+            local ped = _PlayerPedId()
+            local currentHealth = _GetEntityHealth(ped)
+            
+            if currentHealth <= 100 or isDead then
+                _SetEntityHealth(ped, lastHealthCheck.health or 150)
+                DebugSuccess('[HEADSHOT] 🛡️ Santé restaurée (team kill bloqué)')
+            end
+            
+            return -- Ne pas traiter ce headshot
+        end
+        
+        -- Convertir PED -> ServerID
+        local attackerPlayerIndex = _NetworkGetPlayerIndexFromPed(finalAttacker)
+        local attackerServerId = nil
+        
+        if attackerPlayerIndex and attackerPlayerIndex ~= -1 then
+            attackerServerId = _GetPlayerServerId(attackerPlayerIndex)
+        end
+        
+        DebugClient('[HEADSHOT] ✅ ATTAQUANT CONFIRMÉ')
+        DebugClient('[HEADSHOT]    Entity: %d', finalAttacker)
+        DebugClient('[HEADSHOT]    ServerId: %s', attackerServerId or 'nil')
+        DebugClient('[HEADSHOT]    Weapon: %d', finalWeapon or 0)
+        
+        -- ========================================
+        -- TUER INSTANTANÉMENT
+        -- ========================================
+        if DAMAGE_CONFIG.headshotInstantKill then
+            local ped = _PlayerPedId()
+            _SetPedArmour(ped, 0)
+            _SetEntityHealth(ped, 0)
+            
+            DebugClient('[HEADSHOT] 💀 MORT INSTANTANÉE')
+        end
+        
+        -- Notifier le serveur avec le BON tueur
+        if attackerServerId then
+            TriggerServerEvent('pvp:playerDied', attackerServerId)
+            DebugClient('[HEADSHOT] 📤 Notification serveur - Killer: %d', attackerServerId)
+        end
+    end
+end)
+
+-- ========================================
+-- THREAD: SURVEILLANCE DÉGÂTS + RESTAURATION
+-- (pour les dégâts non-headshot d'équipe)
+-- ========================================
+CreateThread(function()
+    DebugSuccess('Thread restauration dégâts équipe démarré')
+    
+    while true do
+        if not IsInMatch() or not damageSystemActive then
+            _Wait(500)
+        else
+            _Wait(0)
             
             local ped = _PlayerPedId()
             local currentHealth = _GetEntityHealth(ped)
             local currentArmour = _GetPedArmour(ped)
             local currentTime = _GetGameTimer()
             
-            -- 🔧 NOUVEAU: Vérifier si on vient de subir un headshot coéquipier
-            if recentTeammateHeadshot and (currentTime - recentTeammateHeadshotTime) < 100 then
-                -- Ressusciter immédiatement si tué par headshot coéquipier
-                if _GetEntityHealth(ped) <= 0 or currentHealth <= 0 then
-                    DebugClient('🛡️ RESSUSCITATION HEADSHOT COÉQUIPIER!')
-                    NetworkResurrectLocalPlayer(
-                        GetEntityCoords(ped).x,
-                        GetEntityCoords(ped).y,
-                        GetEntityCoords(ped).z,
-                        GetEntityHeading(ped),
-                        false,
-                        false
-                    )
-                    
-                    Wait(50)
-                    local newPed = _PlayerPedId()
-                    _SetEntityHealth(newPed, lastHealthCheck.health or 150)
-                    _SetPedArmour(newPed, lastHealthCheck.armour or 100)
-                    
-                    -- Reset flag
-                    recentTeammateHeadshot = false
-                end
-            end
-            
             -- Détecter baisse de vie ou armure
             local healthLost = lastHealthCheck.health - currentHealth
             local armourLost = lastHealthCheck.armour - currentArmour
             
             if (healthLost > 0 or armourLost > 0) then
-                -- Dégâts détectés !
                 local shouldRestore = false
-                local attacker = lastDamageAttacker
+                local attacker = lastKnownAttacker
                 
                 -- Vérifier si l'attaquant récent est un coéquipier
-                if attacker and DoesEntityExist(attacker) and (currentTime - lastDamageTime) < 200 then
+                if attacker and _DoesEntityExist(attacker) and (currentTime - lastAttackerTime) < 200 then
                     local isTeammate = IsTeammatePed(attacker)
                     
                     if isTeammate then
                         shouldRestore = true
-                        DebugClient('🛡️ TEAM DAMAGE - Restauration HP: +%d | Armure: +%d', healthLost, armourLost)
+                        DebugClient('[DAMAGE] 🛡️ TEAM DAMAGE - Restauration HP: +%d | Armure: +%d', healthLost, armourLost)
                     else
-                        DebugClient('⚔️ ENEMY DAMAGE - HP: -%d | Armure: -%d', healthLost, armourLost)
+                        DebugClient('[DAMAGE] ⚔️ ENEMY DAMAGE - HP: -%d | Armure: -%d', healthLost, armourLost)
                     end
-                else
-                    DebugClient('❓ UNKNOWN DAMAGE - HP: -%d | Armure: -%d', healthLost, armourLost)
                 end
                 
                 if shouldRestore then
@@ -195,17 +401,13 @@ CreateThread(function()
                         time = currentTime
                     }
                 else
-                    -- Dégâts acceptés (ennemi ou inconnu)
+                    -- Dégâts acceptés (ennemi)
                     lastHealthCheck = {
                         health = currentHealth,
                         armour = currentArmour,
                         time = currentTime
                     }
                 end
-                
-                -- Reset attacker après traitement
-                lastDamageAttacker = nil
-                lastDamageTime = 0
             else
                 -- Pas de dégâts, mise à jour normale
                 if currentTime - lastHealthCheck.time > 200 then
@@ -221,30 +423,13 @@ CreateThread(function()
 end)
 
 -- ========================================
--- 🔧 THREAD: MISE À JOUR LISTE COÉQUIPIERS
--- ========================================
-CreateThread(function()
-    DebugSuccess('Thread mise à jour coéquipiers démarré')
-    
-    while true do
-        if not IsInMatch() then
-            _Wait(2000)
-            teammateServerIds = {}
-        else
-            _Wait(1000)
-            UpdateTeammateServerIds()
-        end
-    end
-end)
-
--- ========================================
 -- ACTIVATION/DÉSACTIVATION
 -- ========================================
 local function EnableDamageSystem()
     if damageSystemActive then return end
     
     damageSystemActive = true
-    DebugSuccess('🔫 Système de dégâts PVP ACTIVÉ')
+    DebugSuccess('🔫 Système de dégâts UNIFIÉ ACTIVÉ')
     
     for weaponHash, multiplier in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, multiplier)
@@ -258,12 +443,13 @@ local function EnableDamageSystem()
         time = _GetGameTimer()
     }
     
-    lastDamageAttacker = nil
-    lastDamageTime = 0
-    recentTeammateHeadshot = false
+    recentDamageHistory = {}
+    lastKnownAttacker = nil
+    lastKnownWeapon = nil
+    lastAttackerTime = 0
     
     -- Mettre à jour la liste des coéquipiers
-    Wait(200)
+    _Wait(200)
     UpdateTeammateServerIds()
 end
 
@@ -271,16 +457,17 @@ local function DisableDamageSystem()
     if not damageSystemActive then return end
     
     damageSystemActive = false
-    DebugClient('🔫 Système de dégâts PVP DÉSACTIVÉ')
+    DebugClient('🔫 Système de dégâts DÉSACTIVÉ')
     
     for weaponHash, _ in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, 1.0)
     end
     
+    recentDamageHistory = {}
     teammateServerIds = {}
-    lastDamageAttacker = nil
-    lastDamageTime = 0
-    recentTeammateHeadshot = false
+    lastKnownAttacker = nil
+    lastKnownWeapon = nil
+    lastAttackerTime = 0
 end
 
 -- ========================================
@@ -320,99 +507,6 @@ CreateThread(function()
 end)
 
 -- ========================================
--- 🔧 SYSTÈME HEADSHOT - BLOCAGE TOTAL TEAM KILL
--- ========================================
-AddEventHandler('gameEventTriggered', function(eventName, eventData)
-    if eventName ~= 'CEventNetworkEntityDamage' then return end
-    if not IsInMatch() then return end
-    
-    local victim = eventData[1]
-    local attacker = eventData[2]
-    local isDead = eventData[4] == 1
-    local weaponHash = eventData[7]
-    local boneIndex = eventData[3]
-    
-    if victim ~= _PlayerPedId() then return end
-    
-    -- Vérifier si c'est un headshot
-    local isHeadshot = (boneIndex == 31086 or boneIndex == 39317)
-    
-    -- Enregistrer l'attaquant
-    if attacker and IsEntityAPed(attacker) and IsPedAPlayer(attacker) and DoesEntityExist(attacker) then
-        lastDamageAttacker = attacker
-        lastDamageTime = _GetGameTimer()
-        
-        -- Vérifier si c'est un coéquipier
-        local isTeammate = IsTeammatePed(attacker)
-        
-        if isTeammate then
-            DebugClient('🛡️ Event: Attaque coéquipier détectée')
-            
-            -- 🔧 NOUVEAU: BLOQUER COMPLÈTEMENT LES HEADSOTS COÉQUIPIERS
-            if isHeadshot then
-                DebugClient('🛡️🚫 HEADSHOT COÉQUIPIER - BLOCAGE TOTAL!')
-                
-                -- Marquer qu'on vient de subir un headshot coéquipier
-                recentTeammateHeadshot = true
-                recentTeammateHeadshotTime = _GetGameTimer()
-                
-                -- Empêcher la mort immédiate
-                local ped = _PlayerPedId()
-                local currentHealth = _GetEntityHealth(ped)
-                
-                if currentHealth <= 100 or isDead then
-                    -- Restaurer la santé IMMÉDIATEMENT
-                    _SetEntityHealth(ped, lastHealthCheck.health or 150)
-                    DebugSuccess('🛡️ Santé restaurée après headshot coéquipier')
-                end
-                
-                -- Ne PAS traiter ce headshot comme létal
-                return
-            end
-            
-            return -- Ne pas traiter les dégâts de coéquipier
-        else
-            DebugClient('⚔️ Event: Attaque ENNEMIE détectée')
-        end
-    else
-        lastDamageAttacker = nil
-    end
-    
-    -- Si ce n'est PAS un coéquipier, traiter normalement
-    if not attacker or not IsEntityAPed(attacker) or not IsPedAPlayer(attacker) then
-        return
-    end
-    
-    -- Vérifier si c'est une arme PVP
-    local isPvpWeapon = false
-    for wpnHash, _ in pairs(DAMAGE_CONFIG.weapons) do
-        if weaponHash == wpnHash then
-            isPvpWeapon = true
-            break
-        end
-    end
-    
-    if not isPvpWeapon then return end
-    
-    -- 🔧 MODIFIÉ: Headshot létal UNIQUEMENT pour les ENNEMIS
-    if isHeadshot and not isDead then
-        -- Double vérification que ce n'est PAS un coéquipier
-        local isTeammateCheck = IsTeammatePed(attacker)
-        
-        if not isTeammateCheck then
-            DebugClient('💀 HEADSHOT LÉTAL détecté (ennemi confirmé)!')
-            
-            SetEntityHealth(_PlayerPedId(), 0)
-            
-            local attackerServerId = _GetPlayerServerId(_NetworkGetPlayerIndexFromPed(attacker))
-            TriggerServerEvent('pvp:playerDied', attackerServerId)
-        else
-            DebugClient('🛡️ HEADSHOT COÉQUIPIER - Ignoré')
-        end
-    end
-end)
-
--- ========================================
 -- GESTION ARMURE EN MATCH
 -- ========================================
 CreateThread(function()
@@ -423,31 +517,31 @@ CreateThread(function()
             _Wait(500)
             
             local ped = _PlayerPedId()
-            local armour = GetPedArmour(ped)
+            local armour = _GetPedArmour(ped)
             
             if armour > 100 then
-                SetPedArmour(ped, 100)
+                _SetPedArmour(ped, 100)
             end
         end
     end
 end)
 
 -- ========================================
--- 🔧 EVENT: MISE À JOUR COÉQUIPIERS
+-- EVENT: MISE À JOUR COÉQUIPIERS
 -- ========================================
 RegisterNetEvent('pvp:setTeammates', function(teammateIds)
-    DebugClient('📡 Event setTeammates reçu: %s', json.encode(teammateIds))
+    DebugClient('[TEAM] 📡 Event setTeammates reçu: %s', json.encode(teammateIds))
     
     -- Attendre que les joueurs soient chargés
-    Wait(500)
+    _Wait(500)
     
     -- Forcer la mise à jour immédiate
     UpdateTeammateServerIds()
     
     -- Debug final
-    DebugClient('📊 Liste finale des coéquipiers:')
+    DebugClient('[TEAM] 📊 Liste finale des coéquipiers:')
     for serverId, _ in pairs(teammateServerIds) do
-        DebugClient('  - ServerId: %d', serverId)
+        DebugClient('[TEAM]   - ServerId: %d', serverId)
     end
 end)
 
@@ -463,9 +557,46 @@ RegisterNetEvent('pvp:disableDamageSystem', function()
 end)
 
 -- ========================================
+-- COMMANDES DEBUG
+-- ========================================
+RegisterCommand('hsdebug', function()
+    DAMAGE_CONFIG.debug = not DAMAGE_CONFIG.debug
+    print(string.format('^5[DAMAGE]^7 Debug: %s', tostring(DAMAGE_CONFIG.debug)))
+end, false)
+
+RegisterCommand('hsinfo', function()
+    print('^5[DAMAGE]^7 === INFORMATIONS SYSTÈME UNIFIÉ ===')
+    print(string.format('Actif: %s', tostring(damageSystemActive)))
+    print(string.format('Headshots: %s', tostring(DAMAGE_CONFIG.headshotEnabled)))
+    print(string.format('Instant Kill: %s', tostring(DAMAGE_CONFIG.headshotInstantKill)))
+    print(string.format('Historique: %d entrées', #recentDamageHistory))
+    print(string.format('Cache attacker: %s', lastKnownAttacker and 'Actif' or 'Vide'))
+    print(string.format('Coéquipiers: %d', CountTableKeys(teammateServerIds)))
+end, false)
+
+RegisterCommand('hsclear', function()
+    recentDamageHistory = {}
+    lastKnownAttacker = nil
+    lastKnownWeapon = nil
+    lastAttackerTime = 0
+    print('^5[DAMAGE]^7 Historique effacé')
+end, false)
+
+-- Fonction utilitaire
+function CountTableKeys(tbl)
+    local count = 0
+    for _ in pairs(tbl) do count = count + 1 end
+    return count
+end
+
+-- ========================================
 -- EXPORTS
 -- ========================================
 exports('EnableDamageSystem', EnableDamageSystem)
 exports('DisableDamageSystem', DisableDamageSystem)
 
-DebugSuccess('Module Damage System initialisé (VERSION 1.6.0 - FIX HEADSHOT TEAM KILL)')
+DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.0.0)')
+DebugSuccess('✅ Headshot one-shot: ACTIF')
+DebugSuccess('✅ Tracking multi-niveaux: ACTIF')
+DebugSuccess('✅ Anti-friendly fire: ACTIF')
+DebugSuccess('✅ Aucun "Suicide" erroné')
