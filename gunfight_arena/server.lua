@@ -1,10 +1,11 @@
 -- ================================================================================================
--- GUNFIGHT ARENA - SERVER v4.2 OPTIMISÉ
+-- GUNFIGHT ARENA - SERVER v4.2 OPTIMISÉ + KILL FEED ID + NOM FIVEM
 -- ================================================================================================
 -- ✅ Réduction des logs en production
 -- ✅ Optimisation des requêtes SQL avec cache
 -- ✅ Throttling des updates
 -- ✅ FIX v4.2: Notifications kill streak uniquement (sans notification bank standard)
+-- ✅ NOUVEAU: Kill feed avec ID joueur + Nom FiveM
 -- ================================================================================================
 
 local ESX = exports['es_extended']:getSharedObject()
@@ -39,6 +40,21 @@ local function DebugLog(message, logType)
     }
     
     print((prefixes[logType] or "^3[GF-Server]^0") .. " " .. message)
+end
+
+-- ================================================================================================
+-- ✅ NOUVELLE FONCTION : OBTENIR LE NOM FIVEM DU JOUEUR
+-- ================================================================================================
+local function GetFiveMName(playerId)
+    return GetPlayerName(playerId) or "Joueur Inconnu"
+end
+
+-- ================================================================================================
+-- ✅ NOUVELLE FONCTION : FORMATER LE NOM POUR LE KILL FEED (ID + Nom FiveM)
+-- ================================================================================================
+local function FormatKillFeedName(playerId)
+    local fivemName = GetFiveMName(playerId)
+    return "[" .. playerId .. "] " .. fivemName
 end
 
 -- ================================================================================================
@@ -328,7 +344,7 @@ AddEventHandler('gunfightarena:joinRequest', function(zoneNumber)
 end)
 
 -- ================================================================================================
--- EVENT : MORT DU JOUEUR (CORRIGÉ v4.2 - Notifications kill streak uniquement)
+-- ✅ EVENT : MORT DU JOUEUR (MODIFIÉ - Kill feed avec ID + Nom FiveM)
 -- ================================================================================================
 RegisterNetEvent('gunfightarena:playerDied')
 AddEventHandler('gunfightarena:playerDied', function(respawnIndex, killerId)
@@ -376,31 +392,32 @@ AddEventHandler('gunfightarena:playerDied', function(respawnIndex, killerId)
                 SavePlayerStats(killer.identifier, killer.getName(), killerStats)
             end
             
-            -- ✅ FIX v4.2: Récompense SANS notification (silencieux)
+            -- Récompense SANS notification (silencieux)
             local reward = Config.RewardAmount
             killer.addAccountMoney(Config.RewardAccount, reward)
             
-            -- ✅ FIX v4.2: Notification UNIQUEMENT pour les kill streaks
+            -- Notification UNIQUEMENT pour les kill streaks
             if Config.KillStreakBonus.enabled then
                 local bonus = Config.KillStreakBonus[killStreaks[killerId]]
                 if bonus then
                     killer.addAccountMoney(Config.RewardAccount, bonus)
-                    -- Seule notification: Kill Streak Bonus
                     TriggerClientEvent('esx:showNotification', killerId, "~g~KILL STREAK x" .. killStreaks[killerId] .. "! ~w~Bonus: ~g~$" .. bonus)
                 end
             end
             
-            -- ❌ SUPPRIMÉ: La notification de kill standard (Config.Messages.killRecorded)
-            -- TriggerClientEvent('esx:showNotification', killerId, Config.Messages.killRecorded .. reward)
+            -- ✅ KILL FEED MODIFIÉ : Utiliser ID + Nom FiveM au lieu du nom du personnage
+            local killerDisplayName = FormatKillFeedName(killerId)
+            local victimDisplayName = FormatKillFeedName(src)
             
-            -- Kill feed (envoyé à tous les joueurs de l'arène)
             TriggerClientEvent('gunfightarena:killFeed', -1, 
-                killer.getName(), 
-                xPlayer.getName(), 
+                killerDisplayName,  -- Format: [ID] Nom FiveM
+                victimDisplayName,  -- Format: [ID] Nom FiveM
                 false, 
                 killStreaks[killerId], 
                 killerId
             )
+            
+            DebugLog("Kill feed: " .. killerDisplayName .. " -> " .. victimDisplayName, "success")
         end
     end
 end)
@@ -585,6 +602,7 @@ Citizen.CreateThread(function()
     Citizen.Wait(1000)
     print("^2[Gunfight Arena v4.2-OPT]^0 Server démarré - Optimisé")
     print("^3[Gunfight Arena v4.2-OPT]^0 Notifications: Kill Streak uniquement")
+    print("^5[Gunfight Arena v4.2-OPT]^0 Kill Feed: ID + Nom FiveM activé")
     
     if Config.SaveStatsToDatabase then
         UpdateGlobalLeaderboard()

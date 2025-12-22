@@ -1,4 +1,4 @@
-console.log('[PVP UI] Script chargé - Version 4.3.0 - Délai Animation Round 1.5s');
+console.log('[PVP UI] Script chargé - Version 4.5.0 - STATS QUEUES TEMPS RÉEL FIXÉES');
 
 // ========================================
 // VARIABLES GLOBALES
@@ -19,27 +19,27 @@ let currentStatsMode = '1v1';
 let currentLeaderboardMode = '1v1';
 let allModeStats = null;
 
-// ========================================
+// 🆕 VARIABLES STATS QUEUES
+let currentQueueStats = {
+    '1v1': 0,
+    '2v2': 0,
+    '3v3': 0,
+    '4v4': 0
+};
+
 // VARIABLES GLOBALES KILLFEED
-// ========================================
 let killfeedItems = [];
 const MAX_KILLFEED_ITEMS = 5;
-const KILLFEED_DURATION = 5000; // 5 secondes
+const KILLFEED_DURATION = 5000;
 
-// ========================================
-// 🆕 VARIABLES POUR DÉLAI ANIMATIONS
-// ========================================
+// VARIABLES POUR DÉLAI ANIMATIONS
 let roundEndTimer = null;
-const ROUND_END_ANIMATION_DELAY = 1500; // 1.5 secondes
+const ROUND_END_ANIMATION_DELAY = 1500;
 
-// ========================================
 // AVATAR PAR DÉFAUT
-// ========================================
 const DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 
-// ========================================
 // RANGS PAR ELO
-// ========================================
 const RANKS = [
     { id: 1, name: "Bronze", min: 0, max: 999, color: "#cd7f32" },
     { id: 2, name: "Argent", min: 1000, max: 1499, color: "#c0c0c0" },
@@ -63,6 +63,40 @@ function handleAvatarError(imgElement) {
         this.src = DEFAULT_AVATAR;
         console.log('[PVP UI] Erreur chargement avatar, fallback sur défaut');
     };
+}
+
+// ========================================
+// 🆕 FONCTION: METTRE À JOUR L'AFFICHAGE DES STATS QUEUES
+// ========================================
+function updateQueueDisplay() {
+    const modes = ['1v1', '2v2', '3v3', '4v4'];
+    
+    modes.forEach(mode => {
+        const queueInfo = document.getElementById(`queue-${mode}`);
+        const queueCount = queueInfo ? queueInfo.querySelector('.queue-count') : null;
+        
+        if (queueInfo && queueCount) {
+            const count = currentQueueStats[mode] || 0;
+            queueCount.textContent = count;
+            
+            // Ajouter/retirer la classe "has-players" selon le nombre
+            if (count > 0) {
+                queueInfo.classList.add('has-players');
+                queueInfo.classList.add('animate-in');
+                
+                // Retirer l'animation après qu'elle soit jouée
+                setTimeout(() => {
+                    queueInfo.classList.remove('animate-in');
+                }, 300);
+            } else {
+                queueInfo.classList.remove('has-players');
+            }
+            
+            console.log(`[PVP UI] ✅ Mode ${mode}: ${count} joueur(s) en recherche`);
+        } else {
+            console.warn(`[PVP UI] ⚠️ Element queue-${mode} introuvable`);
+        }
+    });
 }
 
 // ========================================
@@ -112,7 +146,6 @@ window.addEventListener('message', function(event) {
     } else if (data.action === 'showGo') {
         showGo();
     } else if (data.action === 'showRoundEnd') {
-        // 🆕 DÉLAI DE 1.5 SECONDES AVANT L'ANIMATION
         console.log('[PVP UI] ⏱️ Délai de 1.5s avant affichage round end...');
         showRoundEnd(data.winner, data.score, data.playerTeam, data.isVictory);
     } else if (data.action === 'showMatchEnd') {
@@ -128,7 +161,10 @@ window.addEventListener('message', function(event) {
         console.log('[PVP UI] Fermeture forcée du panneau d\'invitations');
         hideInvitationsPanel();
     } else if (data.action === 'updateQueueStats') {
-        updateQueueStats(data.stats);
+        // 🆕 TRAITEMENT DES STATS QUEUES
+        console.log('[PVP UI] 📊 Mise à jour stats queues reçue:', data.stats);
+        currentQueueStats = data.stats || currentQueueStats;
+        updateQueueDisplay();
     } else if (data.action === 'showKillfeed') {
         addKillfeed(data.killerName, data.victimName, data.weapon, data.isHeadshot);
     }
@@ -139,7 +175,7 @@ window.addEventListener('message', function(event) {
 // ========================================
 
 function openUI(isSearching = false) {
-    console.log('[PVP UI] ✨ openUI() appelée - VERSION 4.3.0');
+    console.log('[PVP UI] ✨ openUI() appelée - VERSION 4.5.0');
     document.getElementById('container').classList.remove('hidden');
     
     if (isSearching) {
@@ -147,12 +183,30 @@ function openUI(isSearching = false) {
         showSearchScreen();
     }
     
+    // 🆕 DEMANDER LES STATS QUEUES À L'OUVERTURE
+    requestQueueStats();
+    
     loadStatsWithCallback(function() {
         console.log('[PVP UI] ✅ Stats chargées, myAvatar mis à jour:', myAvatar);
         loadGroupInfo();
     });
     
     console.log('[PVP UI] Interface ouverte');
+}
+
+// 🆕 FONCTION: DEMANDER LES STATS QUEUES
+function requestQueueStats() {
+    fetch(`https://${GetParentResourceName()}/getQueueStats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    }).then(resp => resp.json()).then(stats => {
+        console.log('[PVP UI] 📊 Stats queues reçues:', stats);
+        currentQueueStats = stats;
+        updateQueueDisplay();
+    }).catch(err => {
+        console.error('[PVP UI] ❌ Erreur chargement stats queues:', err);
+    });
 }
 
 function showSearchScreen() {
@@ -354,6 +408,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             loadLeaderboardByMode(currentLeaderboardMode);
         } else if (tabName === 'lobby') {
             loadGroupInfo();
+            // 🆕 RAFRAÎCHIR LES STATS QUEUES
+            requestQueueStats();
         }
     });
 });
@@ -971,20 +1027,15 @@ function showGo() {
     setTimeout(() => overlay.classList.add('hidden'), 1000);
 }
 
-// ========================================
-// 🆕 FONCTION: AFFICHER FIN DE ROUND (AVEC DÉLAI 1.5s)
-// ========================================
 function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
     console.log('[PVP UI] 🎬 showRoundEnd appelée - Délai de 1.5s avant affichage');
     
-    // Annuler le timer précédent s'il existe
     if (roundEndTimer) {
         clearTimeout(roundEndTimer);
         roundEndTimer = null;
         console.log('[PVP UI] ⏱️ Timer précédent annulé');
     }
     
-    // DÉLAI DE 1.5 SECONDES AVANT AFFICHAGE
     roundEndTimer = setTimeout(() => {
         console.log('[PVP UI] ✅ Délai écoulé - Affichage animation round end');
         
@@ -1007,14 +1058,13 @@ function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
         
         overlay.classList.remove('hidden');
         
-        // Auto-hide après 1.5 secondes
         setTimeout(() => {
             overlay.classList.add('hidden');
             console.log('[PVP UI] 🎬 Animation round end masquée');
         }, 1500);
         
         roundEndTimer = null;
-    }, ROUND_END_ANIMATION_DELAY); // 1500ms = 1.5 secondes
+    }, ROUND_END_ANIMATION_DELAY);
     
     console.log('[PVP UI] ⏱️ Timer de 1.5s démarré (ID:', roundEndTimer, ')');
 }
@@ -1022,7 +1072,6 @@ function showRoundEnd(winningTeam, score, playerTeam, isVictory) {
 function showMatchEnd(victory, score, playerTeam) {
     clearAllKillfeeds();
     
-    // Annuler le timer de round end s'il existe
     if (roundEndTimer) {
         clearTimeout(roundEndTimer);
         roundEndTimer = null;
@@ -1174,38 +1223,4 @@ function GetParentResourceName() {
     return 'pvp_gunfight';
 }
 
-// ========================================
-// 🆕 FONCTION: METTRE À JOUR STATS QUEUES
-// ========================================
-function updateQueueStats(stats) {
-    console.log('[PVP UI] 📊 Mise à jour stats queues:', stats);
-    
-    const modes = ['1v1', '2v2', '3v3', '4v4'];
-    
-    modes.forEach(mode => {
-        const queueInfo = document.getElementById(`queue-${mode}`);
-        const queueCount = queueInfo ? queueInfo.querySelector('.queue-count') : null;
-        
-        if (queueInfo && queueCount) {
-            const count = stats[mode] || 0;
-            queueCount.textContent = count;
-            
-            // Ajouter/retirer la classe "has-players" selon le nombre
-            if (count > 0) {
-                queueInfo.classList.add('has-players');
-                queueInfo.classList.add('animate-in');
-                
-                // Retirer l'animation après qu'elle soit jouée
-                setTimeout(() => {
-                    queueInfo.classList.remove('animate-in');
-                }, 300);
-            } else {
-                queueInfo.classList.remove('has-players');
-            }
-            
-            console.log(`[PVP UI] Mode ${mode}: ${count} joueur(s) en recherche`);
-        }
-    });
-}
-
-console.log('[PVP UI] ✅ Script initialisé - Version 4.4.0 - Stats Queues en Temps Réel');
+console.log('[PVP UI] ✅ Script initialisé - Version 4.5.0 - STATS QUEUES TEMPS RÉEL FIXÉES');

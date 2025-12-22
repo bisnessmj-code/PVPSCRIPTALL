@@ -1,12 +1,12 @@
 -- ========================================
 -- PVP GUNFIGHT SERVER MAIN
--- Version 4.9.0 - STATS QUEUES EN TEMPS RÉEL
+-- Version 4.10.0 - STATS QUEUES FIXÉES
 -- ========================================
 
 DebugServer('Chargement systeme PVP...')
 
 -- ========================================
--- ÉTATS DE MATCH (NOUVEAU)
+-- ÉTATS DE MATCH
 -- ========================================
 local MATCH_STATE = {
     CREATING = 'creating',
@@ -38,7 +38,7 @@ local playerLastHeartbeat = {}
 local HEARTBEAT_TIMEOUT = 10000
 
 -- ========================================
--- 🆕 FONCTION: OBTENIR STATS DES QUEUES
+-- 🆕 FONCTION CORRIGÉE: OBTENIR STATS DES QUEUES
 -- ========================================
 local function GetQueueStats()
     local stats = {
@@ -48,9 +48,17 @@ local function GetQueueStats()
         ['4v4'] = 0
     }
     
-    -- Compter les joueurs en recherche par mode
+    -- Compter TOUS les joueurs en recherche par mode
     for mode, queue in pairs(queues) do
-        stats[mode] = #queue
+        local count = 0
+        for i = 1, #queue do
+            if queue[i] and queue[i] > 0 then
+                count = count + 1
+            end
+        end
+        stats[mode] = count
+        
+        DebugServer('📊 Stats Queue %s: %d joueurs', mode, count)
     end
     
     return stats
@@ -77,7 +85,7 @@ local WEAPON_NAMES = {
 }
 
 -- ========================================
--- 🛡️ NOUVELLE FONCTION: VÉRIFIER VALIDITÉ MATCH
+-- VÉRIFIER VALIDITÉ MATCH
 -- ========================================
 local function IsMatchValid(matchId)
     if not matchId then return false end
@@ -90,7 +98,7 @@ local function IsMatchValid(matchId)
 end
 
 -- ========================================
--- 🛡️ NOUVELLE FONCTION: OBTENIR MATCH SÉCURISÉ
+-- OBTENIR MATCH SÉCURISÉ
 -- ========================================
 local function GetMatchSafe(matchId)
     if not matchId then 
@@ -119,7 +127,7 @@ local function GetMatchSafe(matchId)
 end
 
 -- ========================================
--- 🛡️ NOUVELLE FONCTION: ANNULER MATCH
+-- ANNULER MATCH
 -- ========================================
 local function CancelMatch(matchId, reason)
     local match = activeMatches[matchId]
@@ -235,19 +243,24 @@ local function HandlePlayerDisconnectFromQueue(playerId)
 end
 
 -- ========================================
--- 🆕 THREAD: BROADCAST STATS QUEUES
+-- 🆕 THREAD CORRIGÉ: BROADCAST STATS QUEUES
 -- ========================================
 CreateThread(function()
+    DebugSuccess('✅ Thread broadcast stats queues démarré')
+    
     while true do
         Wait(2000) -- Mise à jour toutes les 2 secondes
         
         local queueStats = GetQueueStats()
         
-        -- Broadcaster à tous les joueurs qui ont l'UI ouverte
+        DebugServer('📊 Broadcast stats: 1v1=%d, 2v2=%d, 3v3=%d, 4v4=%d', 
+            queueStats['1v1'], queueStats['2v2'], queueStats['3v3'], queueStats['4v4'])
+        
+        -- Broadcaster à tous les joueurs connectés
         local players = GetPlayers()
         for i = 1, #players do
             local playerId = tonumber(players[i])
-            if playerId > 0 and GetPlayerPing(playerId) > 0 then
+            if playerId and playerId > 0 and GetPlayerPing(playerId) > 0 then
                 TriggerClientEvent('pvp:updateQueueStats', playerId, queueStats)
             end
         end
@@ -322,7 +335,7 @@ local function ResetPlayerBucket(playerId)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: SYNC SÉCURISÉ
+-- SYNC SÉCURISÉ
 -- ========================================
 local function SyncAllPlayersInMatch(matchId)
     local match = GetMatchSafe(matchId)
@@ -504,6 +517,7 @@ RegisterNetEvent('pvp:joinQueue', function(mode)
         isSoloQueue = true
     end
     
+    -- 🆕 AJOUT DES JOUEURS ET BROADCAST IMMÉDIAT
     for i = 1, #playersToQueue do
         local playerId = playersToQueue[i]
         queues[mode][#queues[mode] + 1] = playerId
@@ -517,6 +531,19 @@ RegisterNetEvent('pvp:joinQueue', function(mode)
         TriggerClientEvent('pvp:searchStarted', playerId, mode)
         TriggerClientEvent('esx:showNotification', playerId, '~b~Recherche ' .. mode .. '...')
     end
+    
+    -- 🆕 BROADCAST IMMÉDIAT DES STATS APRÈS AJOUT EN QUEUE
+    Wait(100)
+    local queueStats = GetQueueStats()
+    local players = GetPlayers()
+    for i = 1, #players do
+        local playerId = tonumber(players[i])
+        if playerId and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:updateQueueStats', playerId, queueStats)
+        end
+    end
+    
+    DebugSuccess('✅ Joueurs ajoutés en queue - Broadcast stats immédiat')
     
     CheckAndCreateMatch(mode)
 end)
@@ -532,14 +559,25 @@ function CheckAndCreateMatch(mode)
         end
         
         CreateMatch(mode, matchPlayers)
+        
+        -- 🆕 BROADCAST STATS APRÈS RETRAIT DES JOUEURS
+        Wait(100)
+        local queueStats = GetQueueStats()
+        local players = GetPlayers()
+        for i = 1, #players do
+            local playerId = tonumber(players[i])
+            if playerId and playerId > 0 and GetPlayerPing(playerId) > 0 then
+                TriggerClientEvent('pvp:updateQueueStats', playerId, queueStats)
+            end
+        end
     end
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: CRÉER MATCH AVEC PROTECTION
+-- CRÉER MATCH AVEC PROTECTION
 -- ========================================
 function CreateMatch(mode, players)
-    -- 🛡️ Vérifier que tous les joueurs sont connectés AVANT de créer
+    -- Vérifier que tous les joueurs sont connectés AVANT de créer
     for i = 1, #players do
         if GetPlayerPing(players[i]) <= 0 then
             DebugError('🚨 Joueur %d déconnecté avant création match - ANNULATION', players[i])
@@ -588,7 +626,7 @@ function CreateMatch(mode, players)
         end
     end
     
-    -- 🛡️ CRÉER LE MATCH AVEC ÉTAT = CREATING
+    -- CRÉER LE MATCH AVEC ÉTAT = CREATING
     activeMatches[matchId] = {
         mode = mode,
         players = players,
@@ -599,7 +637,7 @@ function CreateMatch(mode, players)
         playerTeams = {},
         score = {team1 = 0, team2 = 0},
         currentRound = 1,
-        status = MATCH_STATE.CREATING,  -- 🛡️ État initial
+        status = MATCH_STATE.CREATING,
         startTime = os.time(),
         deadPlayers = {},
         deathProcessed = {},
@@ -610,7 +648,7 @@ function CreateMatch(mode, players)
     for i = 1, #players do
         local playerId = players[i]
         
-        -- 🛡️ Vérifier encore une fois que le joueur est connecté
+        -- Vérifier encore une fois que le joueur est connecté
         if GetPlayerPing(playerId) <= 0 then
             DebugError('🚨 Joueur %d déconnecté pendant création - ANNULATION MATCH', playerId)
             CancelMatch(matchId, 'Un joueur s\'est déconnecté')
@@ -636,7 +674,7 @@ function CreateMatch(mode, players)
         playerLastHeartbeat[playerId] = GetGameTimer()
     end
     
-    -- 🛡️ Vérifier que le match existe toujours avant de continuer
+    -- Vérifier que le match existe toujours avant de continuer
     if not GetMatchSafe(matchId) then
         DebugError('🚨 Match %d annulé pendant création', matchId)
         return
@@ -648,7 +686,7 @@ function CreateMatch(mode, players)
     
     Wait(200)
     
-    -- 🛡️ Vérifier encore
+    -- Vérifier encore
     if not GetMatchSafe(matchId) then
         DebugError('🚨 Match %d annulé après buckets', matchId)
         return
@@ -668,7 +706,7 @@ function CreateMatch(mode, players)
     
     Wait(3000)
     
-    -- 🛡️ Vérifier avant sync
+    -- Vérifier avant sync
     if not GetMatchSafe(matchId) then
         DebugError('🚨 Match %d annulé avant sync final', matchId)
         return
@@ -684,7 +722,7 @@ function CreateMatch(mode, players)
     
     Wait(1000)
     
-    -- 🛡️ PASSER EN ÉTAT STARTING
+    -- PASSER EN ÉTAT STARTING
     local match = GetMatchSafe(matchId)
     if match then
         match.status = MATCH_STATE.STARTING
@@ -695,7 +733,6 @@ function CreateMatch(mode, players)
 end
 
 function TeleportPlayersToArena(matchId, match, arena, arenaKey)
-    -- 🛡️ Vérifier validité
     if not match then
         DebugError('TeleportPlayersToArena: match nil')
         return
@@ -835,10 +872,22 @@ ESX.RegisterServerCallback('pvp:getLeaderboardByMode', function(source, cb, mode
 end)
 
 -- ========================================
--- 🆕 CALLBACK: RÉCUPÉRER STATS DES QUEUES
+-- 🆕 CALLBACK CORRIGÉ: RÉCUPÉRER STATS DES QUEUES
 -- ========================================
 ESX.RegisterServerCallback('pvp:getQueueStats', function(source, cb)
-    cb(GetQueueStats())
+    local stats = GetQueueStats()
+    DebugServer('📊 Callback getQueueStats appelé par joueur %d - Stats: %s', source, json.encode(stats))
+    cb(stats)
+end)
+
+-- ========================================
+-- 🆕 NUI CALLBACK: RÉCUPÉRER STATS DES QUEUES
+-- ========================================
+RegisterNetEvent('pvp:getQueueStats', function()
+    local src = source
+    local stats = GetQueueStats()
+    DebugServer('📊 Event getQueueStats appelé par joueur %d - Stats: %s', src, json.encode(stats))
+    TriggerClientEvent('pvp:updateQueueStats', src, stats)
 end)
 
 -- ========================================
@@ -884,16 +933,26 @@ RegisterNetEvent('pvp:cancelSearch', function()
         
         DebugServer('✅ Recherche solo annulée pour joueur %d', src)
     end
+    
+    -- 🆕 BROADCAST STATS APRÈS ANNULATION
+    Wait(100)
+    local queueStats = GetQueueStats()
+    local players = GetPlayers()
+    for i = 1, #players do
+        local playerId = tonumber(players[i])
+        if playerId and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:updateQueueStats', playerId, queueStats)
+        end
+    end
 end)
 
 -- ========================================
--- 🛡️ GESTION DES MORTS (PROTÉGÉE)
+-- GESTION DES MORTS (PROTÉGÉE)
 -- ========================================
 RegisterNetEvent('pvp:playerDied', function(killerId)
     local victimId = source
     local matchId = playerCurrentMatch[victimId]
     
-    -- 🛡️ Vérification sécurisée
     if not IsMatchValid(matchId) then 
         DebugWarn('pvp:playerDied: match invalide pour joueur %d', victimId)
         return 
@@ -944,10 +1003,9 @@ RegisterNetEvent('pvp:playerDiedOutsideZone', function()
 end)
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: HANDLE PLAYER DEATH
+-- HANDLE PLAYER DEATH
 -- ========================================
 function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
-    -- 🛡️ Double vérification
     if not match then
         DebugError('HandlePlayerDeath: match nil')
         return
@@ -983,10 +1041,9 @@ function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: CHECK ROUND END
+-- CHECK ROUND END
 -- ========================================
 function CheckRoundEnd(matchId, match)
-    -- 🛡️ Vérification
     if not match then
         DebugError('CheckRoundEnd: match nil')
         return
@@ -1039,10 +1096,9 @@ function CheckRoundEnd(matchId, match)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: END ROUND
+-- END ROUND
 -- ========================================
 function EndRound(matchId, match, roundWinner)
-    -- 🛡️ Vérification
     if not match then
         DebugError('EndRound: match nil')
         return
@@ -1075,7 +1131,6 @@ function EndRound(matchId, match, roundWinner)
     else
         Wait(3000)
         
-        -- 🛡️ Vérifier que le match existe toujours
         if not GetMatchSafe(matchId) then
             DebugError('Match %d annulé pendant EndRound', matchId)
             return
@@ -1097,7 +1152,6 @@ function EndRound(matchId, match, roundWinner)
         RespawnPlayers(matchId, match, arena)
         Wait(2000)
         
-        -- 🛡️ Vérifier encore
         if not GetMatchSafe(matchId) then
             DebugError('Match %d annulé avant StartRound', matchId)
             return
@@ -1109,10 +1163,9 @@ function EndRound(matchId, match, roundWinner)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: RESPAWN PLAYERS
+-- RESPAWN PLAYERS
 -- ========================================
 function RespawnPlayers(matchId, match, arena)
-    -- 🛡️ Vérification
     if not match then
         DebugError('RespawnPlayers: match nil')
         return
@@ -1137,10 +1190,9 @@ function RespawnPlayers(matchId, match, arena)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: START ROUND
+-- START ROUND
 -- ========================================
 function StartRound(matchId, match, arena)
-    -- 🛡️ VÉRIFICATION CRITIQUE
     if not match then
         DebugError('🚨 StartRound: match nil - ARRÊT')
         return
@@ -1152,7 +1204,6 @@ function StartRound(matchId, match, arena)
         return
     end
     
-    -- 🛡️ Vérifier l'état du match
     if match.status == MATCH_STATE.CANCELLED or match.status == MATCH_STATE.FINISHED then
         DebugWarn('StartRound: match %d déjà terminé/annulé', matchId)
         return
@@ -1176,10 +1227,9 @@ function StartRound(matchId, match, arena)
 end
 
 -- ========================================
--- 🛡️ FONCTION MODIFIÉE: END MATCH
+-- END MATCH
 -- ========================================
 function EndMatch(matchId, match)
-    -- 🛡️ Vérification
     if not match then
         DebugError('EndMatch: match nil')
         return
@@ -1232,7 +1282,6 @@ function EndMatch(matchId, match)
     
     Wait(2000)
     
-    -- 🛡️ MARQUER LE MATCH COMME TERMINÉ
     match.status = MATCH_STATE.FINISHED
     activeMatches[matchId] = nil
 end
@@ -1477,6 +1526,9 @@ RegisterCommand('pvpstatus', function(source)
     end
     
     print('[PVP] Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue)
+    
+    local stats = GetQueueStats()
+    print('[PVP] Stats queues: 1v1=' .. stats['1v1'] .. ', 2v2=' .. stats['2v2'] .. ', 3v3=' .. stats['3v3'] .. ', 4v4=' .. stats['4v4'])
 end, false)
 
-DebugSuccess('Systeme PVP charge (VERSION 4.9.0 - STATS QUEUES EN TEMPS RÉEL)')
+DebugSuccess('Systeme PVP charge (VERSION 4.10.0 - STATS QUEUES FIXÉES)')
