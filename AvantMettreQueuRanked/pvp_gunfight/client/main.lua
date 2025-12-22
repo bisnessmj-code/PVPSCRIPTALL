@@ -888,8 +888,6 @@ end)
 -- 🆕 EVENT: MISE À JOUR STATS QUEUES
 -- ========================================
 RegisterNetEvent('pvp:updateQueueStats', function(stats)
-    DebugClient('📊 Reception stats queues: %s', json.encode(stats))
-    
     SendNUIMessage({
         action = 'updateQueueStats',
         stats = stats

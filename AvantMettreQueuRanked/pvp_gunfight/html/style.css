@@ -1793,7 +1793,7 @@ body {
    ======================================== */
 .mode-queue-info {
     position: absolute;
-    bottom: var(--spacing-sm);
+    bottom: -8px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
