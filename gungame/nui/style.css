@@ -1,0 +1,341 @@
+/* ╔═══════════════════════════════════════════════════════════════════════════╗
+   ║                        GUNGAME - STYLES CSS                                ║
+   ║              Thème ROUGE / BLANC / NOIR - TOP 5 CLASSEMENT                 ║
+   ╚═══════════════════════════════════════════════════════════════════════════╝ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+    color: #ffffff;
+    overflow: hidden;
+    background: transparent;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* PANELS */
+.panel {
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 3px solid #ff3333;
+}
+
+.panel-header {
+    padding: 8px 12px;
+    background: rgba(255, 51, 51, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #ff3333;
+}
+
+/* LEADERBOARD (TOP 5) */
+#leaderboard {
+    position: fixed;
+    top: 50px;
+    left: 20px;
+    width: 280px;
+    max-height: 400px;
+    overflow: hidden;
+}
+
+#leaderboard-content {
+    padding: 4px 0;
+}
+
+.leaderboard-entry {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-entry:last-child {
+    border-bottom: none;
+}
+
+.leaderboard-entry.top1 {
+    background: rgba(255, 51, 51, 0.2);
+}
+
+.leaderboard-entry.top2 {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.leaderboard-entry.top3 {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.entry-rank {
+    width: 28px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.entry-rank.gold { color: #ff3333; }
+.entry-rank.silver { color: #ffffff; }
+.entry-rank.bronze { color: #999999; }
+
+.entry-id {
+    width: 35px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+}
+
+.entry-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #ffffff;
+}
+
+.entry-weapon {
+    width: 50px;
+    text-align: right;
+    color: #ff3333;
+    font-weight: 600;
+}
+
+.entry-kills {
+    width: 45px;
+    text-align: right;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+}
+
+/* KILL FEED */
+#kill-feed {
+    position: fixed;
+    top: 65px;
+    right: 20px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.kill-entry {
+    background: rgba(0, 0, 0, 0.85);
+    border-left: 3px solid #ff3333;
+    padding: 8px 12px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+.kill-entry.fade-out {
+    opacity: 0;
+}
+
+.kill-entry .killer {
+    color: #ff3333;
+    font-weight: 600;
+}
+
+.kill-entry .killer-id {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+}
+
+.kill-entry .weapon {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+}
+
+.kill-entry .victim {
+    color: #ffffff;
+}
+
+.kill-entry .victim-id {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+}
+
+.kill-entry .arrow {
+    color: #ff3333;
+    font-weight: bold;
+}
+
+/* WEAPON PROGRESS */
+#weapon-progress {
+    position: fixed;
+    right: 20px;
+    top: 90%;
+    transform: translateY(-50%);
+    width: 280px;
+    padding: 12px 16px;
+}
+
+.progress-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.weapon-details {
+    flex: 1;
+}
+
+.weapon-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.weapon-category {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.progress-numbers {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.progress-numbers .separator {
+    color: rgba(255, 255, 255, 0.3);
+    margin: 0 2px;
+}
+
+#weapon-index {
+    color: #ff3333;
+}
+
+#total-weapons {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.progress-bar-container {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: #ff3333;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.kills-info {
+    font-size: 11px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+#current-kills {
+    color: #ff3333;
+    font-weight: 600;
+}
+
+/* END SCREEN */
+#end-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.end-content {
+    text-align: center;
+    max-width: 500px;
+}
+
+.end-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    margin-bottom: 40px;
+    color: #ffffff;
+}
+
+.winner-section {
+    margin-bottom: 40px;
+}
+
+.winner-label {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 8px;
+}
+
+.winner-name {
+    font-size: 36px;
+    font-weight: 700;
+    color: #ff3333;
+}
+
+.top3-section {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 3px solid #ff3333;
+    padding: 20px;
+}
+
+.top3-title {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 16px;
+}
+
+#top3-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.top3-entry {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.top3-entry .medal {
+    width: 30px;
+    font-size: 18px;
+}
+
+.top3-entry .player-id {
+    width: 40px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+}
+
+.top3-entry .name {
+    flex: 1;
+    text-align: left;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.top3-entry .stats {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GunGame HUD</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="gungame-container" class="hidden">
+        
+        <!-- Classement TOP 5 -->
+        <div id="leaderboard" class="panel">
+            <div class="panel-header">CLASSEMENT TOP 5</div>
+            <div id="leaderboard-content"></div>
+        </div>
+        
+        <!-- Kill Feed -->
+        <div id="kill-feed"></div>
+        
+        <!-- Progression d'arme -->
+        <div id="weapon-progress" class="panel">
+            <div class="progress-info">
+                <div class="weapon-details">
+                    <div class="weapon-name" id="weapon-name">Chargement...</div>
+                    <div class="weapon-category" id="weapon-category">-</div>
+                </div>
+                <div class="progress-numbers">
+                    <span id="weapon-index">1</span>
+                    <span class="separator">/</span>
+                    <span id="total-weapons">40</span>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <div class="kills-info">
+                Kills: <span id="current-kills">0</span>/<span id="kills-needed">2</span>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- Écran de fin -->
+    <div id="end-screen" class="hidden">
+        <div class="end-content">
+            <div class="end-title">PARTIE TERMINÉE</div>
+            <div class="winner-section">
+                <div class="winner-label">VAINQUEUR</div>
+                <div class="winner-name" id="winner-name">-</div>
+            </div>
+            <div class="top3-section">
+                <div class="top3-title">TOP 3</div>
+                <div id="top3-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
