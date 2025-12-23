@@ -1,9 +1,9 @@
 -- ========================================
 -- PVP GUNFIGHT SERVER MAIN
--- Version 4.13.0 - MORTS SIMULTANÉES + ÉCHANGE SPAWNS
+-- Version 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS
 -- ========================================
 
-DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ + SPAWN SWAP + MORTS SIMULTANÉES)...')
+DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ + SPAWN SWAP)...')
 
 -- ========================================
 -- ÉTATS DE MATCH
@@ -36,9 +36,6 @@ local nextBucketId = 100
 -- Systeme de heartbeat pour detecter les crashes
 local playerLastHeartbeat = {}
 local HEARTBEAT_TIMEOUT = 10000
-
--- 🆕 SYSTÈME DE DÉTECTION MORTS SIMULTANÉES
-local SIMULTANEOUS_DEATH_WINDOW = 500 -- 500ms de fenêtre pour détecter morts simultanées
 
 -- 🆕 CACHE DES STATS QUEUES (évite recalculs)
 local cachedQueueStats = {
@@ -618,10 +615,7 @@ function CreateMatch(mode, players)
         startTime = os.time(),
         deadPlayers = {},
         deathProcessed = {},
-        wasSoloMatch = allWereSolo,
-        -- 🆕 TRACKING DES MORTS POUR DÉTECTION SIMULTANÉE
-        roundDeaths = {},
-        lastDeathTime = 0
+        wasSoloMatch = allWereSolo
     }
     
     local halfSize = #players / 2
@@ -903,7 +897,7 @@ RegisterNetEvent('pvp:cancelSearch', function()
 end)
 
 -- ========================================
--- 🆕 FONCTION MODIFIÉE: GESTION MORT AVEC DÉTECTION SIMULTANÉE
+-- ✅ FONCTION SIMPLIFIÉE: GESTION MORT (RETRAIT LOGIQUE ÉGALITÉ)
 -- ========================================
 RegisterNetEvent('pvp:playerDied', function(killerId)
     local victimId = source
@@ -929,37 +923,8 @@ RegisterNetEvent('pvp:playerDied', function(killerId)
         end
     end
     
-    -- 🆕 ENREGISTRER LA MORT AVEC TIMESTAMP
-    local currentTime = GetGameTimer()
-    match.roundDeaths[#match.roundDeaths + 1] = {
-        victimId = victimId,
-        killerId = killerId,
-        time = currentTime,
-        friendlyFire = isFriendlyFire
-    }
-    
     match.deathProcessed[deathKey] = true
-    match.lastDeathTime = currentTime
-    
-    -- ⏳ ATTENDRE UN PEU POUR DÉTECTER D'AUTRES MORTS SIMULTANÉES
-    Wait(SIMULTANEOUS_DEATH_WINDOW)
-    
-    -- 🆕 VÉRIFIER SI D'AUTRES MORTS ONT EU LIEU DANS LA FENÊTRE
-    local simultaneousDeaths = {}
-    for i = 1, #match.roundDeaths do
-        local death = match.roundDeaths[i]
-        if (currentTime - death.time) <= SIMULTANEOUS_DEATH_WINDOW then
-            simultaneousDeaths[#simultaneousDeaths + 1] = death
-        end
-    end
-    
-    -- 🔍 ANALYSER LES MORTS SIMULTANÉES
-    if #simultaneousDeaths > 1 then
-        DebugServer('💥 MORTS SIMULTANÉES DÉTECTÉES: %d morts', #simultaneousDeaths)
-        HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire, simultaneousDeaths)
-    else
-        HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire, nil)
-    end
+    HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
 end)
 
 RegisterNetEvent('pvp:playerDiedOutsideZone', function()
@@ -976,13 +941,13 @@ RegisterNetEvent('pvp:playerDiedOutsideZone', function()
     if match.deathProcessed[deathKey] then return end
     
     match.deathProcessed[deathKey] = true
-    HandlePlayerDeath(matchId, match, victimId, nil, false, nil)
+    HandlePlayerDeath(matchId, match, victimId, nil, false)
 end)
 
 -- ========================================
--- 🆕 FONCTION MODIFIÉE: GESTION MORT AVEC TRAITEMENT MORTS SIMULTANÉES
+-- ✅ FONCTION SIMPLIFIÉE: GESTION MORT (SANS MORTS SIMULTANÉES)
 -- ========================================
-function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire, simultaneousDeaths)
+function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
     if not match then
         return
     end
@@ -1012,14 +977,13 @@ function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire, s
     
     BroadcastKillfeed(matchId, killerId, victimId, weaponHash, isHeadshot)
     
-    -- 🆕 SI MORTS SIMULTANÉES, PASSER simultaneousDeaths À CheckRoundEnd
-    CheckRoundEnd(matchId, match, simultaneousDeaths)
+    CheckRoundEnd(matchId, match)
 end
 
 -- ========================================
--- 🆕 FONCTION MODIFIÉE: VÉRIFICATION FIN DE ROUND AVEC MORTS SIMULTANÉES
+-- ✅ FONCTION SIMPLIFIÉE: VÉRIFICATION FIN DE ROUND (RETRAIT ÉGALITÉ)
 -- ========================================
-function CheckRoundEnd(matchId, match, simultaneousDeaths)
+function CheckRoundEnd(matchId, match)
     if not match then
         return
     end
@@ -1039,83 +1003,51 @@ function CheckRoundEnd(matchId, match, simultaneousDeaths)
     end
     
     local roundWinner = nil
-    local isTie = false
     
-    -- 🆕 CAS 1: MORTS SIMULTANÉES DÉTECTÉES
-    if simultaneousDeaths and #simultaneousDeaths > 1 then
-        DebugServer('🎯 Analyse morts simultanées (%d morts)', #simultaneousDeaths)
-        
-        -- Compter les morts par équipe
-        local team1Deaths = 0
-        local team2Deaths = 0
-        
-        for i = 1, #simultaneousDeaths do
-            local death = simultaneousDeaths[i]
-            local victimTeam = match.playerTeams[death.victimId]
-            
-            if victimTeam == 'team1' then
-                team1Deaths = team1Deaths + 1
-            elseif victimTeam == 'team2' then
-                team2Deaths = team2Deaths + 1
-            end
-        end
-        
-        DebugServer('📊 Team1 morts: %d | Team2 morts: %d', team1Deaths, team2Deaths)
-        
-        -- 🆕 SI LES DEUX ÉQUIPES ONT EU DES MORTS SIMULTANÉES = ÉGALITÉ
-        if team1Deaths > 0 and team2Deaths > 0 then
-            DebugSuccess('⚖️ ÉGALITÉ DÉTECTÉE - Point pour chaque équipe!')
-            match.score.team1 = match.score.team1 + 1
-            match.score.team2 = match.score.team2 + 1
-            isTie = true
-            roundWinner = 'tie'
-        else
-            -- Une seule équipe a eu des morts = victoire de l'autre
-            if team1Deaths > 0 then
-                match.score.team2 = match.score.team2 + 1
-                roundWinner = 'team2'
-            elseif team2Deaths > 0 then
-                match.score.team1 = match.score.team1 + 1
-                roundWinner = 'team1'
-            end
-        end
-    -- CAS 2: PAS DE MORTS SIMULTANÉES - LOGIQUE NORMALE
-    elseif team1Alive == 0 and team2Alive > 0 then
+    -- ✅ CAS 1: Team2 gagne (Team1 éliminée)
+    if team1Alive == 0 and team2Alive > 0 then
         match.score.team2 = match.score.team2 + 1
         roundWinner = 'team2'
+    -- ✅ CAS 2: Team1 gagne (Team2 éliminée)
     elseif team2Alive == 0 and team1Alive > 0 then
         match.score.team1 = match.score.team1 + 1
         roundWinner = 'team1'
+    -- ✅ CAS 3: Tous morts en même temps = chercher dernier kill valide
     elseif team1Alive == 0 and team2Alive == 0 then
-        -- Tous morts en même temps sans détection précise = chercher dernier kill
+        DebugWarn('⚠️ Tous morts simultanément - Recherche dernier kill valide')
+        
+        -- Parcourir l'historique des kills en ORDRE INVERSE
         if match.roundStats and #match.roundStats > 0 then
             for i = #match.roundStats, 1, -1 do
                 local stat = match.roundStats[i]
+                
+                -- Trouver le premier kill valide (non friendly fire, avec killer)
                 if stat.killer and not stat.friendlyFire then
                     roundWinner = match.playerTeams[stat.killer]
+                    DebugServer('🎯 Gagnant déterminé par dernier kill: %s (killer: %d)', roundWinner, stat.killer)
                     break
                 end
             end
         end
         
-        if roundWinner then
-            match.score[roundWinner] = match.score[roundWinner] + 1
-        else
-            -- Aucun tueur valide trouvé = donner à team1 par défaut
-            match.score.team1 = match.score.team1 + 1
+        -- Si aucun kill valide trouvé, donner à team1 par défaut
+        if not roundWinner then
             roundWinner = 'team1'
+            DebugWarn('⚠️ Aucun kill valide trouvé - Team1 gagne par défaut')
         end
+        
+        match.score[roundWinner] = match.score[roundWinner] + 1
     end
     
     if roundWinner then
-        EndRound(matchId, match, roundWinner, isTie)
+        EndRound(matchId, match, roundWinner)
     end
 end
 
 -- ========================================
--- 🆕 FONCTION MODIFIÉE: FIN DE ROUND AVEC SUPPORT ÉGALITÉ
+-- ✅ FONCTION SIMPLIFIÉE: FIN DE ROUND (RETRAIT SUPPORT ÉGALITÉ)
 -- ========================================
-function EndRound(matchId, match, roundWinner, isTie)
+function EndRound(matchId, match, roundWinner)
     if not match then
         return
     end
@@ -1130,19 +1062,12 @@ function EndRound(matchId, match, roundWinner, isTie)
     
     SyncAllPlayersInMatch(matchId)
     
-    -- 🆕 BROADCAST AVEC SUPPORT ÉGALITÉ
+    -- ✅ BROADCAST SANS SUPPORT ÉGALITÉ
     for i = 1, #match.players do
         local playerId = match.players[i]
         if playerId > 0 and GetPlayerPing(playerId) > 0 then
             local playerTeam = match.playerTeams[playerId]
-            local isVictory = false
-            
-            if isTie then
-                isVictory = nil -- Égalité
-                TriggerClientEvent('esx:showNotification', playerId, '⚖️ ÉGALITÉ - Point pour chaque équipe!')
-            else
-                isVictory = (roundWinner == playerTeam)
-            end
+            local isVictory = (roundWinner == playerTeam)
             
             TriggerClientEvent('pvp:roundEnd', playerId, roundWinner, match.score, playerTeam, isVictory)
             TriggerClientEvent('pvp:updateScore', playerId, match.score, match.currentRound)
@@ -1161,8 +1086,6 @@ function EndRound(matchId, match, roundWinner, isTie)
         match.currentRound = match.currentRound + 1
         match.deadPlayers = {}
         match.deathProcessed = {}
-        match.roundDeaths = {} -- 🆕 Réinitialiser le tracking des morts
-        match.lastDeathTime = 0
         
         SyncAllPlayersInMatch(matchId)
         
@@ -1235,8 +1158,6 @@ function StartRound(matchId, match, arena)
     match.roundStats = {}
     match.deadPlayers = {}
     match.deathProcessed = {}
-    match.roundDeaths = {} -- 🆕 Réinitialiser le tracking des morts
-    match.lastDeathTime = 0
     
     SyncAllPlayersInMatch(matchId)
     
@@ -1566,4 +1487,4 @@ RegisterCommand('pvpstatus', function(source)
     end
 end, false)
 
-DebugSuccess('Systeme PVP charge (VERSION 4.13.0 - MORTS SIMULTANÉES + ÉCHANGE SPAWNS)')
+DebugSuccess('Systeme PVP charge (VERSION 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS)')
