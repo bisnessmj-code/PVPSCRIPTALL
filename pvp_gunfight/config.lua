@@ -73,7 +73,7 @@ Config.Discord = {
 -- CONFIGURATION DU PED
 -- ========================================
 Config.PedLocation = {
-    coords = vector4(225.639556, -861.454956, 30.054932, 2.834646),
+    coords = vector4(-2650.786866, -767.472534, 4.965576, 96.377944),
     model = 's_m_y_dealer_01',
     scenario = 'WORLD_HUMAN_CLIPBOARD'
 }

@@ -1,9 +1,9 @@
 -- ========================================
 -- PVP GUNFIGHT SERVER MAIN
--- Version 4.11.0 - ULTRA-OPTIMISÉ EVENT-DRIVEN
+-- Version 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS
 -- ========================================
 
-DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ)...')
+DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ + SPAWN SWAP)...')
 
 -- ========================================
 -- ÉTATS DE MATCH
@@ -117,6 +117,14 @@ local WEAPON_NAMES = {
     [GetHashKey('WEAPON_HAMMER')] = 'Hammer',
     [GetHashKey('WEAPON_BAT')] = 'Baseball Bat',
 }
+
+-- ========================================
+-- 🔄 NOUVEAU: FONCTION D'ÉCHANGE DE SPAWNS
+-- ========================================
+local function ShouldSwapSpawns(roundNumber)
+    -- Échanger les spawns tous les rounds PAIRS (2, 4, 6...)
+    return (roundNumber % 2) == 0
+end
 
 -- ========================================
 -- VÉRIFIER VALIDITÉ MATCH
@@ -693,23 +701,39 @@ function CreateMatch(mode, players)
     end
 end
 
+-- ========================================
+-- 🔄 FONCTION MODIFIÉE: TÉLÉPORTATION AVEC ÉCHANGE SPAWNS
+-- ========================================
 function TeleportPlayersToArena(matchId, match, arena, arenaKey)
     if not match then
         DebugError('TeleportPlayersToArena: match nil')
         return
     end
     
+    -- 🔄 VÉRIFIER SI ON DOIT ÉCHANGER LES SPAWNS
+    local shouldSwap = ShouldSwapSpawns(match.currentRound)
+    
+    if shouldSwap then
+        DebugServer('🔄 Round %d: ÉCHANGE DES SPAWNS (Team1 ↔ Team2)', match.currentRound)
+    else
+        DebugServer('📍 Round %d: Spawns normaux', match.currentRound)
+    end
+    
+    -- 🔄 TÉLÉPORTER TEAM1
+    local team1Spawns = shouldSwap and arena.teamB or arena.teamA
     for i = 1, #match.team1 do
         local playerId = match.team1[i]
-        if arena.teamA[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
-            TriggerClientEvent('pvp:teleportToSpawn', playerId, arena.teamA[i], 'team1', matchId, arenaKey)
+        if team1Spawns[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:teleportToSpawn', playerId, team1Spawns[i], 'team1', matchId, arenaKey)
         end
     end
     
+    -- 🔄 TÉLÉPORTER TEAM2
+    local team2Spawns = shouldSwap and arena.teamA or arena.teamB
     for i = 1, #match.team2 do
         local playerId = match.team2[i]
-        if arena.teamB[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
-            TriggerClientEvent('pvp:teleportToSpawn', playerId, arena.teamB[i], 'team2', matchId, arenaKey)
+        if team2Spawns[i] and playerId > 0 and GetPlayerPing(playerId) > 0 then
+            TriggerClientEvent('pvp:teleportToSpawn', playerId, team2Spawns[i], 'team2', matchId, arenaKey)
         end
     end
     
@@ -830,17 +854,11 @@ ESX.RegisterServerCallback('pvp:getLeaderboardByMode', function(source, cb, mode
     end)
 end)
 
--- ========================================
--- ✅ CALLBACK OPTIMISÉ: RÉCUPÉRER STATS DES QUEUES (SANS LOGS)
--- ========================================
 ESX.RegisterServerCallback('pvp:getQueueStats', function(source, cb)
     local stats = GetQueueStats()
     cb(stats)
 end)
 
--- ========================================
--- EVENT: ANNULER RECHERCHE
--- ========================================
 RegisterNetEvent('pvp:cancelSearch', function()
     local src = source
     
@@ -874,13 +892,12 @@ RegisterNetEvent('pvp:cancelSearch', function()
         TriggerClientEvent('pvp:searchCancelled', src)
         TriggerClientEvent('esx:showNotification', src, '~y~Recherche annulee')
         
-        -- ✅ BROADCAST UNIQUEMENT SI CHANGEMENT
         BroadcastQueueStatsIfChanged()
     end
 end)
 
 -- ========================================
--- GESTION DES MORTS (PROTÉGÉE)
+-- ✅ FONCTION SIMPLIFIÉE: GESTION MORT (RETRAIT LOGIQUE ÉGALITÉ)
 -- ========================================
 RegisterNetEvent('pvp:playerDied', function(killerId)
     local victimId = source
@@ -907,7 +924,6 @@ RegisterNetEvent('pvp:playerDied', function(killerId)
     end
     
     match.deathProcessed[deathKey] = true
-    
     HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
 end)
 
@@ -929,7 +945,7 @@ RegisterNetEvent('pvp:playerDiedOutsideZone', function()
 end)
 
 -- ========================================
--- HANDLE PLAYER DEATH
+-- ✅ FONCTION SIMPLIFIÉE: GESTION MORT (SANS MORTS SIMULTANÉES)
 -- ========================================
 function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
     if not match then
@@ -937,7 +953,7 @@ function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
     end
     
     if match.status ~= MATCH_STATE.PLAYING then 
-        return 
+        return
     end
     
     match.deadPlayers = match.deadPlayers or {}
@@ -965,7 +981,7 @@ function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
 end
 
 -- ========================================
--- CHECK ROUND END
+-- ✅ FONCTION SIMPLIFIÉE: VÉRIFICATION FIN DE ROUND (RETRAIT ÉGALITÉ)
 -- ========================================
 function CheckRoundEnd(matchId, match)
     if not match then
@@ -988,29 +1004,39 @@ function CheckRoundEnd(matchId, match)
     
     local roundWinner = nil
     
+    -- ✅ CAS 1: Team2 gagne (Team1 éliminée)
     if team1Alive == 0 and team2Alive > 0 then
         match.score.team2 = match.score.team2 + 1
         roundWinner = 'team2'
+    -- ✅ CAS 2: Team1 gagne (Team2 éliminée)
     elseif team2Alive == 0 and team1Alive > 0 then
         match.score.team1 = match.score.team1 + 1
         roundWinner = 'team1'
+    -- ✅ CAS 3: Tous morts en même temps = chercher dernier kill valide
     elseif team1Alive == 0 and team2Alive == 0 then
+        DebugWarn('⚠️ Tous morts simultanément - Recherche dernier kill valide')
+        
+        -- Parcourir l'historique des kills en ORDRE INVERSE
         if match.roundStats and #match.roundStats > 0 then
             for i = #match.roundStats, 1, -1 do
                 local stat = match.roundStats[i]
+                
+                -- Trouver le premier kill valide (non friendly fire, avec killer)
                 if stat.killer and not stat.friendlyFire then
                     roundWinner = match.playerTeams[stat.killer]
+                    DebugServer('🎯 Gagnant déterminé par dernier kill: %s (killer: %d)', roundWinner, stat.killer)
                     break
                 end
             end
         end
         
-        if roundWinner then
-            match.score[roundWinner] = match.score[roundWinner] + 1
-        else
-            match.score.team1 = match.score.team1 + 1
+        -- Si aucun kill valide trouvé, donner à team1 par défaut
+        if not roundWinner then
             roundWinner = 'team1'
+            DebugWarn('⚠️ Aucun kill valide trouvé - Team1 gagne par défaut')
         end
+        
+        match.score[roundWinner] = match.score[roundWinner] + 1
     end
     
     if roundWinner then
@@ -1019,7 +1045,7 @@ function CheckRoundEnd(matchId, match)
 end
 
 -- ========================================
--- END ROUND
+-- ✅ FONCTION SIMPLIFIÉE: FIN DE ROUND (RETRAIT SUPPORT ÉGALITÉ)
 -- ========================================
 function EndRound(matchId, match, roundWinner)
     if not match then
@@ -1036,6 +1062,7 @@ function EndRound(matchId, match, roundWinner)
     
     SyncAllPlayersInMatch(matchId)
     
+    -- ✅ BROADCAST SANS SUPPORT ÉGALITÉ
     for i = 1, #match.players do
         local playerId = match.players[i]
         if playerId > 0 and GetPlayerPing(playerId) > 0 then
@@ -1082,7 +1109,7 @@ function EndRound(matchId, match, roundWinner)
 end
 
 -- ========================================
--- RESPAWN PLAYERS
+-- 🔄 FONCTION MODIFIÉE: RESPAWN AVEC ÉCHANGE SPAWNS
 -- ========================================
 function RespawnPlayers(matchId, match, arena)
     if not match then
@@ -1093,22 +1120,26 @@ function RespawnPlayers(matchId, match, arena)
         return
     end
     
+    -- 🔄 VÉRIFIER SI ON DOIT ÉCHANGER LES SPAWNS
+    local shouldSwap = ShouldSwapSpawns(match.currentRound)
+    
+    -- 🔄 RESPAWN TEAM1
+    local team1Spawns = shouldSwap and arena.teamB or arena.teamA
     for i = 1, #match.team1 do
-        if arena.teamA[i] and match.team1[i] > 0 and GetPlayerPing(match.team1[i]) > 0 then
-            TriggerClientEvent('pvp:respawnPlayer', match.team1[i], arena.teamA[i])
+        if team1Spawns[i] and match.team1[i] > 0 and GetPlayerPing(match.team1[i]) > 0 then
+            TriggerClientEvent('pvp:respawnPlayer', match.team1[i], team1Spawns[i])
         end
     end
     
+    -- 🔄 RESPAWN TEAM2
+    local team2Spawns = shouldSwap and arena.teamA or arena.teamB
     for i = 1, #match.team2 do
-        if arena.teamB[i] and match.team2[i] > 0 and GetPlayerPing(match.team2[i]) > 0 then
-            TriggerClientEvent('pvp:respawnPlayer', match.team2[i], arena.teamB[i])
+        if team2Spawns[i] and match.team2[i] > 0 and GetPlayerPing(match.team2[i]) > 0 then
+            TriggerClientEvent('pvp:respawnPlayer', match.team2[i], team2Spawns[i])
         end
     end
 end
 
--- ========================================
--- START ROUND
--- ========================================
 function StartRound(matchId, match, arena)
     if not match then
         return
@@ -1138,9 +1169,6 @@ function StartRound(matchId, match, arena)
     end
 end
 
--- ========================================
--- END MATCH
--- ========================================
 function EndMatch(matchId, match)
     if not match then
         return
@@ -1194,9 +1222,6 @@ function EndMatch(matchId, match)
     activeMatches[matchId] = nil
 end
 
--- ========================================
--- FONCTION: HANDLE PLAYER DISCONNECT
--- ========================================
 function HandlePlayerDisconnect(playerId)
     ResetPlayerBucket(playerId)
     playerWasSoloBeforeMatch[playerId] = nil
@@ -1269,9 +1294,6 @@ function HandlePlayerDisconnect(playerId)
     playerCurrentMatch[playerId] = nil
 end
 
--- ========================================
--- EVENT: PLAYER DROPPED
--- ========================================
 AddEventHandler('playerDropped', function()
     local src = source
     
@@ -1279,7 +1301,6 @@ AddEventHandler('playerDropped', function()
     HandlePlayerDisconnect(src)
 end)
 
--- CLEANUP RESSOURCE
 AddEventHandler('onResourceStop', function(resourceName)
     if GetCurrentResourceName() ~= resourceName then return end
     
@@ -1308,7 +1329,6 @@ AddEventHandler('onResourceStop', function(resourceName)
     end
 end)
 
--- COMMANDES ADMIN
 local function ForcePlayerToLobby(playerId)
     if not playerId or playerId <= 0 or GetPlayerPing(playerId) <= 0 then
         return false
@@ -1344,27 +1364,49 @@ local function ForcePlayerToLobby(playerId)
 end
 
 RegisterCommand('pvpforcelobby', function(source, args)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
     local targetId = tonumber(args[1])
     if not targetId then
-        print('[PVP] Usage: pvpforcelobby [player_id]')
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Usage: /pvpforcelobby [player_id]')
+        else
+            print('[PVP] Usage: pvpforcelobby [player_id]')
+        end
         return
     end
     
     if ForcePlayerToLobby(targetId) then
-        print('[PVP] Joueur ' .. targetId .. ' force au lobby')
+        local msg = '✅ Joueur ' .. targetId .. ' forcé au lobby'
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~g~' .. msg)
+        else
+            print('[PVP] ' .. msg)
+        end
     else
-        print('[PVP] Impossible de forcer joueur ' .. targetId)
+        local msg = '❌ Impossible de forcer joueur ' .. targetId
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~' .. msg)
+        else
+            print('[PVP] ' .. msg)
+        end
     end
 end, false)
 
 RegisterCommand('pvpkickall', function(source)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
@@ -1398,12 +1440,21 @@ RegisterCommand('pvpkickall', function(source)
     
     BroadcastQueueStatsIfChanged()
     
-    print('[PVP] ' .. kickedCount .. ' joueurs forces au lobby')
+    local msg = kickedCount .. ' joueurs forcés au lobby'
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~g~' .. msg)
+    else
+        print('[PVP] ' .. msg)
+    end
 end, false)
 
 RegisterCommand('pvpstatus', function(source)
-    if source ~= 0 and not IsPlayerAceAllowed(source, 'pvp.admin') then
-        TriggerClientEvent('esx:showNotification', source, '~r~Permission refusee')
+    if not exports['pvp_gunfight']:IsPlayerAdmin(source) then
+        if source > 0 then
+            TriggerClientEvent('esx:showNotification', source, '~r~Permission refusée')
+        else
+            print('[PVP] Cette commande nécessite les permissions admin')
+        end
         return
     end
     
@@ -1420,10 +1471,20 @@ RegisterCommand('pvpstatus', function(source)
         totalInQueue = totalInQueue + #queue
     end
     
-    print('[PVP] Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue)
+    local msg1 = 'Matchs: ' .. matchCount .. ' | En jeu: ' .. playersInMatchCount .. ' | En queue: ' .. totalInQueue
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~b~' .. msg1)
+    else
+        print('[PVP] ' .. msg1)
+    end
     
     local stats = GetQueueStats()
-    print('[PVP] Stats queues: 1v1=' .. stats['1v1'] .. ', 2v2=' .. stats['2v2'] .. ', 3v3=' .. stats['3v3'] .. ', 4v4=' .. stats['4v4'])
+    local msg2 = 'Stats queues: 1v1=' .. stats['1v1'] .. ', 2v2=' .. stats['2v2'] .. ', 3v3=' .. stats['3v3'] .. ', 4v4=' .. stats['4v4']
+    if source > 0 then
+        TriggerClientEvent('esx:showNotification', source, '~b~' .. msg2)
+    else
+        print('[PVP] ' .. msg2)
+    end
 end, false)
 
-DebugSuccess('Systeme PVP charge (VERSION 4.11.0 - ULTRA-OPTIMISÉ EVENT-DRIVEN)')
+DebugSuccess('Systeme PVP charge (VERSION 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS)')

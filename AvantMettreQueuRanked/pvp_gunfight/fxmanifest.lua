@@ -1,8 +1,7 @@
 
-
 -- ========================================
 -- PVP GUNFIGHT - FX MANIFEST
--- Version 4.1.1 - WEBHOOKS SÉCURISÉS
+-- Version 4.2.0 - SYSTÈME DE PERMISSIONS
 -- ========================================
 
 fx_version 'cerulean'
@@ -10,8 +9,8 @@ game 'gta5'
 lua54 'yes'
 
 author 'PVP GunFight'
-description 'Système PVP GunFight Ultra-Optimisé + Webhooks Sécurisés - v4.1.1'
-version '4.1.1'
+description 'Système PVP GunFight Ultra-Optimisé + Système de Permissions - v4.2.0'
+version '4.2.0'
 
 -- ========================================
 -- SCRIPTS PARTAGÉS
@@ -44,9 +43,10 @@ server_scripts {
     'server/groups.lua',
     'server/discord.lua',
     'server/inventory_bridge.lua',
-    'server/webhook_manager.lua',      -- 🔒 NOUVEAU: Gestionnaire de webhooks sécurisés
+    'server/webhook_manager.lua',
+    'server/permissions.lua',          -- ✅ NOUVEAU: Système de permissions
     'server/main.lua',
-    'server/discord_leaderboard.lua'   -- 🔒 MODIFIÉ: Utilise les webhooks sécurisés
+    'server/discord_leaderboard.lua'
 }
 
 -- ========================================

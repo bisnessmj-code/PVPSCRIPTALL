@@ -1,16 +1,17 @@
 -- ========================================
 -- PVP GUNFIGHT - SYSTÈME DE DÉGÂTS UNIFIÉ
--- Version 2.1.0 - DÉSACTIVATION CASQUES
+-- Version 2.2.0 - DÉSACTIVATION CASQUES + SANS ARMURE
 -- ========================================
 -- ✅ UN SEUL handler gameEventTriggered
 -- ✅ Tracking multi-niveaux robuste (headshot_system)
 -- ✅ Anti-friendly fire (damage_system)
 -- ✅ Headshot one-shot kill garanti
 -- ✅ AUCUN "Suicide" erroné
--- ✅ NOUVEAUTÉ: Désactivation protection casques
+-- ✅ Désactivation protection casques
+-- ✅ SANS système d'armure
 -- ========================================
 
-DebugClient('Module Damage System chargé (UNIFIÉ v2.1.0 - Casques désactivés)')
+DebugClient('Module Damage System chargé (UNIFIÉ v2.2.0 - Sans Armure)')
 
 -- ========================================
 -- CACHE DES NATIVES
@@ -24,8 +25,7 @@ local _NetworkGetPlayerIndexFromPed = NetworkGetPlayerIndexFromPed
 local _GetPlayerServerId = GetPlayerServerId
 local _GetEntityHealth = GetEntityHealth
 local _SetEntityHealth = SetEntityHealth
-local _GetPedArmour = GetPedArmour
-local _SetPedArmour = SetPedArmour
+-- ❌ RETIRÉ: _GetPedArmour, _SetPedArmour
 local _GetGameTimer = GetGameTimer
 local _GetPlayerPed = GetPlayerPed
 local _GetPlayerFromServerId = GetPlayerFromServerId
@@ -77,7 +77,7 @@ local teammateServerIds = {}
 
 -- État système
 local damageSystemActive = false
-local lastHealthCheck = {health = 200, armour = 100, time = 0}
+local lastHealthCheck = {health = 200, time = 0} -- ❌ RETIRÉ: armour
 
 -- ========================================
 -- 🆕 FONCTION: DÉSACTIVER PROTECTION CASQUES
@@ -385,7 +385,7 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
         -- ========================================
         if DAMAGE_CONFIG.headshotInstantKill then
             local ped = _PlayerPedId()
-            _SetPedArmour(ped, 0)
+            -- ❌ RETIRÉ: _SetPedArmour(ped, 0)
             _SetEntityHealth(ped, 0)
             
             DebugClient('[HEADSHOT] 💀 MORT INSTANTANÉE')
@@ -400,11 +400,10 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
 end)
 
 -- ========================================
--- THREAD: SURVEILLANCE DÉGÂTS + RESTAURATION
--- (pour les dégâts non-headshot d'équipe)
+-- 🔧 THREAD MODIFIÉ: SURVEILLANCE DÉGÂTS (SANS ARMURE)
 -- ========================================
 CreateThread(function()
-    DebugSuccess('Thread restauration dégâts équipe démarré')
+    DebugSuccess('Thread restauration dégâts équipe démarré (SANS ARMURE)')
     
     while true do
         if not IsInMatch() or not damageSystemActive then
@@ -414,14 +413,12 @@ CreateThread(function()
             
             local ped = _PlayerPedId()
             local currentHealth = _GetEntityHealth(ped)
-            local currentArmour = _GetPedArmour(ped)
             local currentTime = _GetGameTimer()
             
-            -- Détecter baisse de vie ou armure
+            -- Détecter baisse de vie
             local healthLost = lastHealthCheck.health - currentHealth
-            local armourLost = lastHealthCheck.armour - currentArmour
             
-            if (healthLost > 0 or armourLost > 0) then
+            if healthLost > 0 then
                 local shouldRestore = false
                 local attacker = lastKnownAttacker
                 
@@ -431,33 +428,25 @@ CreateThread(function()
                     
                     if isTeammate then
                         shouldRestore = true
-                        DebugClient('[DAMAGE] 🛡️ TEAM DAMAGE - Restauration HP: +%d | Armure: +%d', healthLost, armourLost)
+                        DebugClient('[DAMAGE] 🛡️ TEAM DAMAGE - Restauration HP: +%d', healthLost)
                     else
-                        DebugClient('[DAMAGE] ⚔️ ENEMY DAMAGE - HP: -%d | Armure: -%d', healthLost, armourLost)
+                        DebugClient('[DAMAGE] ⚔️ ENEMY DAMAGE - HP: -%d', healthLost)
                     end
                 end
                 
                 if shouldRestore then
                     -- RESTAURER IMMÉDIATEMENT
-                    if healthLost > 0 then
-                        _SetEntityHealth(ped, lastHealthCheck.health)
-                    end
-                    
-                    if armourLost > 0 then
-                        _SetPedArmour(ped, lastHealthCheck.armour)
-                    end
+                    _SetEntityHealth(ped, lastHealthCheck.health)
                     
                     -- Mettre à jour immédiatement
                     lastHealthCheck = {
                         health = _GetEntityHealth(ped),
-                        armour = _GetPedArmour(ped),
                         time = currentTime
                     }
                 else
                     -- Dégâts acceptés (ennemi)
                     lastHealthCheck = {
                         health = currentHealth,
-                        armour = currentArmour,
                         time = currentTime
                     }
                 end
@@ -466,7 +455,6 @@ CreateThread(function()
                 if currentTime - lastHealthCheck.time > 200 then
                     lastHealthCheck = {
                         health = currentHealth,
-                        armour = currentArmour,
                         time = currentTime
                     }
                 end
@@ -482,7 +470,7 @@ local function EnableDamageSystem()
     if damageSystemActive then return end
     
     damageSystemActive = true
-    DebugSuccess('🔫 Système de dégâts UNIFIÉ ACTIVÉ')
+    DebugSuccess('🔫 Système de dégâts UNIFIÉ ACTIVÉ (SANS ARMURE)')
     
     for weaponHash, multiplier in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, multiplier)
@@ -495,7 +483,6 @@ local function EnableDamageSystem()
     -- Réinitialiser le suivi
     lastHealthCheck = {
         health = _GetEntityHealth(ped),
-        armour = _GetPedArmour(ped),
         time = _GetGameTimer()
     }
     
@@ -567,24 +554,8 @@ CreateThread(function()
 end)
 
 -- ========================================
--- GESTION ARMURE EN MATCH
+-- ❌ RETIRÉ: GESTION ARMURE EN MATCH
 -- ========================================
-CreateThread(function()
-    while true do
-        if not IsInMatch() then
-            _Wait(2000)
-        else
-            _Wait(500)
-            
-            local ped = _PlayerPedId()
-            local armour = _GetPedArmour(ped)
-            
-            if armour > 100 then
-                _SetPedArmour(ped, 100)
-            end
-        end
-    end
-end)
 
 -- ========================================
 -- EVENT: MISE À JOUR COÉQUIPIERS
@@ -625,7 +596,7 @@ RegisterCommand('hsdebug', function()
 end, false)
 
 RegisterCommand('hsinfo', function()
-    print('^5[DAMAGE]^7 === INFORMATIONS SYSTÈME UNIFIÉ ===')
+    print('^5[DAMAGE]^7 === INFORMATIONS SYSTÈME UNIFIÉ (SANS ARMURE) ===')
     print(string.format('Actif: %s', tostring(damageSystemActive)))
     print(string.format('Headshots: %s', tostring(DAMAGE_CONFIG.headshotEnabled)))
     print(string.format('Instant Kill: %s', tostring(DAMAGE_CONFIG.headshotInstantKill)))
@@ -633,6 +604,7 @@ RegisterCommand('hsinfo', function()
     print(string.format('Cache attacker: %s', lastKnownAttacker and 'Actif' or 'Vide'))
     print(string.format('Coéquipiers: %d', CountTableKeys(teammateServerIds)))
     print('^5[CASQUES]^7 Protection désactivée: ' .. (damageSystemActive and 'OUI' or 'NON'))
+    print('^5[ARMURE]^7 Système désactivé: OUI')
 end, false)
 
 RegisterCommand('hsclear', function()
@@ -656,9 +628,10 @@ end
 exports('EnableDamageSystem', EnableDamageSystem)
 exports('DisableDamageSystem', DisableDamageSystem)
 
-DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.1.0)')
+DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.2.0)')
 DebugSuccess('✅ Headshot one-shot: ACTIF')
 DebugSuccess('✅ Tracking multi-niveaux: ACTIF')
 DebugSuccess('✅ Anti-friendly fire: ACTIF')
 DebugSuccess('✅ Protection casques: DÉSACTIVÉE')
+DebugSuccess('✅ Système d\'armure: DÉSACTIVÉ')
 DebugSuccess('✅ Aucun "Suicide" erroné')

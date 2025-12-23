@@ -1,3 +1,4 @@
+shared_script '@WaveShield/resource/include.lua'
 
 -- ========================================
 -- PVP GUNFIGHT - FX MANIFEST
