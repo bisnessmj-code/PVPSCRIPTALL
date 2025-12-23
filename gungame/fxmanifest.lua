@@ -26,7 +26,8 @@ shared_scripts {
 
 client_scripts {
     'client/main.lua',
-    'client/ui.lua'
+    'client/ui.lua',
+    'client/debug.lua'
 }
 
 server_scripts {

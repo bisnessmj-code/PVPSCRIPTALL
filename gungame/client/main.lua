@@ -1,7 +1,7 @@
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                        CLIENT - MAIN.LUA                                   ║
-    ║     ✅ CORRIGÉ v2 : BLOCAGE TOTAL TAB + 1-6 (TOUS LES CONTRÔLES)          ║
+    ║     ✅ ULTRA-CORRIGÉ : BLOCAGE TOTAL QS-INVENTORY (TAB + & é " ' ()       ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
 
@@ -222,62 +222,154 @@ CreateThread(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⭐ THREAD : BLOCAGE COMPLET DES TOUCHES (TAB + 1-6 + INVENTAIRE) ⭐
+-- ⭐ THREAD : BLOCAGE ULTRA-COMPLET QS-INVENTORY (TAB + RACCOURCIS 1-9) ⭐
 -- ═══════════════════════════════════════════════════════════════════════════
 CreateThread(function()
     while true do
-        Wait(0) -- ⭐ IMPORTANT : Wait(0) pour bloquer en temps réel ⭐
+        Wait(0) -- ⭐ CRITIQUE : Wait(0) pour bloquer en temps réel ⭐
         
         if cachedData.isInGame then
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE TAB (ROUE D'ARMES) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 37, true)    -- TAB
+            local ped = PlayerPedId()
             
             -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE TOUCHES 1-9 (SÉLECTION D'ARMES) ⭐
+            -- ⭐ BLOCAGE ABSOLU TAB (INVENTAIRE QS-INVENTORY) ⭐
             -- ═══════════════════════════════════════════════════════════════
+            DisableControlAction(0, 37, true)    -- TAB principal
+            DisableControlAction(1, 37, true)    -- TAB (contexte alternatif)
+            DisableControlAction(2, 37, true)    -- TAB (frontend)
+            
+            -- ═══════════════════════════════════════════════════════════════
+            -- ⭐ BLOCAGE COMPLET RACCOURCIS 1-9 (& é " ' ( - è _ ç) ⭐
+            -- ═══════════════════════════════════════════════════════════════
+            -- Contexte principal (0)
             DisableControlAction(0, 157, true)   -- 1 (&)
             DisableControlAction(0, 158, true)   -- 2 (é)
             DisableControlAction(0, 160, true)   -- 3 (")
             DisableControlAction(0, 164, true)   -- 4 (')
             DisableControlAction(0, 165, true)   -- 5 (()
             DisableControlAction(0, 159, true)   -- 6 (-)
-            DisableControlAction(0, 161, true)   -- 7
-            DisableControlAction(0, 162, true)   -- 8
-            DisableControlAction(0, 163, true)   -- 9
+            DisableControlAction(0, 161, true)   -- 7 (è)
+            DisableControlAction(0, 162, true)   -- 8 (_)
+            DisableControlAction(0, 163, true)   -- 9 (ç)
+            
+            -- Contexte alternatif (1)
+            DisableControlAction(1, 157, true)
+            DisableControlAction(1, 158, true)
+            DisableControlAction(1, 160, true)
+            DisableControlAction(1, 164, true)
+            DisableControlAction(1, 165, true)
+            DisableControlAction(1, 159, true)
+            DisableControlAction(1, 161, true)
+            DisableControlAction(1, 162, true)
+            DisableControlAction(1, 163, true)
             
             -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE SCROLL (CHANGEMENT D'ARME) ⭐
+            -- ⭐ BLOCAGE SCROLL MOLETTE (CHANGEMENT D'ARME) ⭐
             -- ═══════════════════════════════════════════════════════════════
             DisableControlAction(0, 14, true)    -- Scroll down
             DisableControlAction(0, 15, true)    -- Scroll up
-            DisableControlAction(0, 16, true)    -- Scroll wheel
+            DisableControlAction(0, 16, true)    -- Scroll wheel press
             DisableControlAction(0, 17, true)    -- Scroll wheel
+            DisableControlAction(1, 14, true)
+            DisableControlAction(1, 15, true)
+            DisableControlAction(1, 16, true)
+            DisableControlAction(1, 17, true)
             
             -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE INVENTAIRE ⭐
+            -- ⭐ BLOCAGE TOUCHES INVENTAIRE (I, F3, etc.) ⭐
             -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 289, true)   -- I (inventaire)
+            DisableControlAction(0, 289, true)   -- I (inventaire standard)
             DisableControlAction(0, 170, true)   -- F3 (inventaire alternatif)
+            DisableControlAction(1, 289, true)
+            DisableControlAction(1, 170, true)
             
             -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ FORCER L'ARME ACTUELLE (SI PAS EN RESPAWN) ⭐
+            -- ⭐ BLOCAGE X (ROUE D'ARMES NATIVE GTA) ⭐
+            -- ═══════════════════════════════════════════════════════════════
+            DisableControlAction(0, 99, true)    -- X (INPUT_VEH_SELECT_NEXT_WEAPON)
+            DisableControlAction(0, 115, true)   -- X (alternative)
+            
+            -- ═══════════════════════════════════════════════════════════════
+            -- ⭐ EMPÊCHER L'OUVERTURE DES MENUS (M, F1, etc.) ⭐
+            -- ═══════════════════════════════════════════════════════════════
+            DisableControlAction(0, 244, true)   -- M (map)
+            DisableControlAction(0, 288, true)   -- F1 (phone/menu)
+            
+            -- ═══════════════════════════════════════════════════════════════
+            -- ⭐ FORCER L'ARME GUNGAME (SÉCURITÉ ABSOLUE) ⭐
             -- ═══════════════════════════════════════════════════════════════
             if not cachedData.isRespawning then
-                local ped = PlayerPedId()
                 local currentWeapon = GetSelectedPedWeapon(ped)
                 local expectedWeapon = Config.GetWeaponHash(cachedData.currentWeaponIndex)
                 
+                -- Vérifier si le joueur a changé d'arme
                 if currentWeapon ~= expectedWeapon and expectedWeapon ~= 0 then
+                    -- FORCER le retour à l'arme GunGame
                     SetCurrentPedWeapon(ped, expectedWeapon, true)
+                    
+                    -- Notification visuelle (limité à 1 par seconde)
+                    if not cachedData.lastWeaponWarning or GetGameTimer() - cachedData.lastWeaponWarning > 1000 then
+                        ShowNotification('~r~Tu ne peux utiliser que l\'arme GunGame !')
+                        cachedData.lastWeaponWarning = GetGameTimer()
+                        print('^1[GunGame][CLIENT][ANTI-WEAPON]^7 Arme forcée: ' .. expectedWeapon)
+                    end
                 end
             end
             
-            -- DÉSACTIVER COMPLÈTEMENT LE RESPAWN ESX/GF_RESPAWN
+            -- DÉSACTIVER LE RESPAWN ESX/GF_RESPAWN
             SetPlayerInvincible(PlayerId(), false)
         else
             Wait(500) -- ⭐ En dehors du jeu, on attend plus longtemps ⭐
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ⭐ THREAD SUPPLÉMENTAIRE : NETTOYAGE PÉRIODIQUE DES ARMES ⭐
+-- ═══════════════════════════════════════════════════════════════════════════
+CreateThread(function()
+    while true do
+        Wait(500) -- Vérification toutes les 500ms
+        
+        if cachedData.isInGame and not cachedData.isRespawning then
+            local ped = PlayerPedId()
+            local expectedWeapon = Config.GetWeaponHash(cachedData.currentWeaponIndex)
+            
+            if expectedWeapon and expectedWeapon ~= 0 then
+                -- Compter le nombre d'armes que le joueur possède
+                local weaponCount = 0
+                local hasExpectedWeapon = false
+                
+                -- Vérifier les armes du joueur
+                for _, weapon in ipairs(Config.Weapons) do
+                    local weaponHash = GetHashKey(weapon.name)
+                    if HasPedGotWeapon(ped, weaponHash, false) then
+                        weaponCount = weaponCount + 1
+                        if weaponHash == expectedWeapon then
+                            hasExpectedWeapon = true
+                        end
+                    end
+                end
+                
+                -- Si le joueur a plus d'une arme OU n'a pas l'arme attendue
+                if weaponCount > 1 or not hasExpectedWeapon then
+                    print('^1[GunGame][CLIENT][ANTI-INVENTORY]^7 ⚠️ Détection d\'armes multiples ou manquantes')
+                    print('^1[GunGame][CLIENT][ANTI-INVENTORY]^7 Armes détectées: ' .. weaponCount .. ', A l\'arme attendue: ' .. tostring(hasExpectedWeapon))
+                    
+                    -- NETTOYAGE TOTAL
+                    RemoveAllPedWeapons(ped, true)
+                    Wait(100)
+                    
+                    -- REDONNER L'ARME GUNGAME
+                    GiveWeaponToPed(ped, expectedWeapon, Config.DefaultAmmo, false, true)
+                    SetPedAmmo(ped, expectedWeapon, Config.DefaultAmmo)
+                    SetAmmoInClip(ped, expectedWeapon, GetMaxAmmoInClip(ped, expectedWeapon, true))
+                    SetCurrentPedWeapon(ped, expectedWeapon, true)
+                    
+                    ShowNotification('~r~Armes non autorisées supprimées !')
+                    print('^2[GunGame][CLIENT][ANTI-INVENTORY]^7 ✅ Arme GunGame restaurée')
+                end
+            end
         end
     end
 end)
