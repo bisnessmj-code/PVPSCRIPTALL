@@ -1,7 +1,7 @@
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                        SERVER - MAIN.LUA                                   ║
-    ║            CORRIGÉ : Bucket 100, Classement 5, Déconnexion                 ║
+    ║      ✅ CORRIGÉ : Utilisation du nom FiveM dans le kill feed              ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
 
@@ -13,6 +13,13 @@ GunGame = {
     activeGame = false,
     winner = nil
 }
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- FONCTION : RÉCUPÉRER LE NOM FIVEM (⭐ NOUVEAU ⭐)
+-- ═══════════════════════════════════════════════════════════════════════════
+function GetFiveMName(source)
+    return GetPlayerName(source) or "Unknown"
+end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ÉVÉNEMENT : VIDER L'INVENTAIRE DES ARMES
@@ -29,7 +36,7 @@ RegisterNetEvent('gungame:server:clearInventoryWeapons', function()
         xPlayer.removeWeapon(loadout[i].name)
     end
     
-    print('^2[GunGame][SERVER]^7 Inventaire des armes vidé pour ' .. xPlayer.getName())
+    print('^2[GunGame][SERVER]^7 Inventaire des armes vidé pour ' .. GetFiveMName(source))
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -45,7 +52,7 @@ RegisterNetEvent('gungame:server:requestJoin', function()
     end
     
     if GunGame.players[source] then
-        print('^3[GunGame][WARN]^7 Le joueur ' .. xPlayer.getName() .. ' (' .. source .. ') est déjà en partie')
+        print('^3[GunGame][WARN]^7 Le joueur ' .. GetFiveMName(source) .. ' (' .. source .. ') est déjà en partie')
         return
     end
     
@@ -56,14 +63,17 @@ RegisterNetEvent('gungame:server:requestJoin', function()
     
     if currentPlayers >= Config.MaxPlayersPerGame then
         TriggerClientEvent('esx:showNotification', source, '~r~La partie est complète !')
-        print('^3[GunGame][WARN]^7 Partie complète - Joueur refusé : ' .. xPlayer.getName())
+        print('^3[GunGame][WARN]^7 Partie complète - Joueur refusé : ' .. GetFiveMName(source))
         return
     end
+    
+    -- ⭐ UTILISER LE NOM FIVEM AU LIEU DU NOM ESX ⭐
+    local fiveMName = GetFiveMName(source)
     
     local playerData = {
         source = source,
         identifier = xPlayer.identifier,
-        name = xPlayer.getName(),
+        name = fiveMName,  -- ⭐ NOM FIVEM ⭐
         weaponIndex = 1,
         kills = 0,
         totalKills = 0,
@@ -73,7 +83,7 @@ RegisterNetEvent('gungame:server:requestJoin', function()
     
     GunGame.players[source] = playerData
     
-    -- ⭐ MISE DANS LE BUCKET 100 (GunGame) ⭐
+    -- MISE DANS LE BUCKET 100 (GunGame)
     if Config.RoutingBucket.enabled then
         SetPlayerRoutingBucket(source, Config.RoutingBucket.bucketId)
         print('^2[GunGame][BUCKET]^7 ' .. playerData.name .. ' mis dans le bucket ' .. Config.RoutingBucket.bucketId)
@@ -116,7 +126,7 @@ function RemovePlayer(source, skipClient)
     
     GunGame.players[source] = nil
     
-    -- ⭐ REMETTRE DANS LE BUCKET 0 (gf_respawn fonctionne ici) ⭐
+    -- REMETTRE DANS LE BUCKET 0 (gf_respawn fonctionne ici)
     if Config.RoutingBucket.enabled then
         SetPlayerRoutingBucket(source, Config.RoutingBucket.defaultBucket)
         print('^2[GunGame][BUCKET]^7 ' .. playerData.name .. ' remis dans le bucket ' .. Config.RoutingBucket.defaultBucket)
@@ -131,7 +141,7 @@ function RemovePlayer(source, skipClient)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- FONCTION : DIFFUSER LE CLASSEMENT (LIMITÉ À 5) ⭐ CORRIGÉ ⭐
+-- FONCTION : DIFFUSER LE CLASSEMENT (LIMITÉ À 5)
 -- ═══════════════════════════════════════════════════════════════════════════
 function BroadcastLeaderboard()
     local leaderboard = {}
@@ -139,7 +149,7 @@ function BroadcastLeaderboard()
     for source, playerData in pairs(GunGame.players) do
         table.insert(leaderboard, {
             id = source,
-            name = playerData.name,
+            name = playerData.name,  -- ⭐ NOM FIVEM ⭐
             weaponIndex = playerData.weaponIndex,
             kills = playerData.kills,
             totalKills = playerData.totalKills,
@@ -154,14 +164,13 @@ function BroadcastLeaderboard()
         return a.weaponIndex > b.weaponIndex
     end)
     
-    -- ⭐ LIMITER À 5 JOUEURS ⭐
+    -- LIMITER À 5 JOUEURS
     local limitedLeaderboard = {}
     for i = 1, math.min(#leaderboard, 5) do
         table.insert(limitedLeaderboard, leaderboard[i])
     end
     
     print('^5[GunGame][LEADERBOARD]^7 Diffusion du classement à ' .. GetTableLength(GunGame.players) .. ' joueurs')
-    print('^5[GunGame][LEADERBOARD]^7 Contenu (top 5): ' .. json.encode(limitedLeaderboard))
     
     for source, _ in pairs(GunGame.players) do
         TriggerClientEvent('gungame:client:updateLeaderboard', source, limitedLeaderboard)
@@ -182,7 +191,7 @@ function BroadcastPlayerBlips()
             local coords = GetEntityCoords(ped)
             table.insert(players, {
                 id = source,
-                name = playerData.name,
+                name = playerData.name,  -- ⭐ NOM FIVEM ⭐
                 x = coords.x,
                 y = coords.y,
                 z = coords.z
@@ -206,7 +215,7 @@ function EndGame(winnerData)
     for source, playerData in pairs(GunGame.players) do
         table.insert(leaderboard, {
             id = source,
-            name = playerData.name,
+            name = playerData.name,  -- ⭐ NOM FIVEM ⭐
             weaponIndex = playerData.weaponIndex,
             totalKills = playerData.totalKills
         })
@@ -262,7 +271,7 @@ CreateThread(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- HANDLER : DÉCONNEXION ⭐ CORRIGÉ POUR ÉVITER LES BUGS ⭐
+-- HANDLER : DÉCONNEXION
 -- ═══════════════════════════════════════════════════════════════════════════
 AddEventHandler('playerDropped', function(reason)
     local source = source
@@ -301,7 +310,7 @@ ESX.RegisterCommand('ggkick', Config.AdminGroup, function(xPlayer, args, showErr
     if GunGame.players[targetId] then
         RemovePlayer(targetId, false)
         TriggerClientEvent('esx:showNotification', xPlayer.source, '~g~Joueur kick du GunGame')
-        print('^2[GunGame][ADMIN]^7 ' .. xPlayer.getName() .. ' a kick le joueur ' .. targetId)
+        print('^2[GunGame][ADMIN]^7 ' .. GetFiveMName(xPlayer.source) .. ' a kick le joueur ' .. targetId)
     else
         TriggerClientEvent('esx:showNotification', xPlayer.source, '~r~Ce joueur n\'est pas en partie')
     end
@@ -317,7 +326,7 @@ ESX.RegisterCommand('ggkickall', Config.AdminGroup, function(xPlayer, args, show
     end
     
     TriggerClientEvent('esx:showNotification', xPlayer.source, '~g~' .. count .. ' joueur(s) kick du GunGame')
-    print('^2[GunGame][ADMIN]^7 ' .. xPlayer.getName() .. ' a kick tous les joueurs (' .. count .. ')')
+    print('^2[GunGame][ADMIN]^7 ' .. GetFiveMName(xPlayer.source) .. ' a kick tous les joueurs (' .. count .. ')')
 end, false, {help = 'Kick tous les joueurs du GunGame', validate = false})
 
 ESX.RegisterCommand('gglist', Config.AdminGroup, function(xPlayer, args, showError)
@@ -359,6 +368,7 @@ CreateThread(function()
     print('^2[GunGame]^7 Max joueurs: ' .. Config.MaxPlayersPerGame)
     print('^2[GunGame]^7 Total armes: ' .. Config.TotalWeapons)
     print('^2[GunGame]^7 Classement: Top 5')
+    print('^2[GunGame]^7 Noms: FiveM (natifs)')
     print('^2[GunGame]^7 Commande joueur: /quitgungame')
     print('^2[GunGame]^7 ========================================')
 end)
@@ -369,3 +379,4 @@ end)
 exports('getPlayers', function() return GunGame.players end)
 exports('getPlayerCount', function() return GetTableLength(GunGame.players) end)
 exports('isPlayerInGame', function(source) return GunGame.players[source] ~= nil end)
+exports('getFiveMName', GetFiveMName)
