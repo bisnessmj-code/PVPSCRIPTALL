@@ -1,9 +1,8 @@
 -- ================================================================================================
--- GUNFIGHT ARENA - DISCORD LEADERBOARD v4.0 SÉCURISÉ
+-- GUNFIGHT ARENA - DISCORD LEADERBOARD v4.1 OPTIMISÉ
 -- ================================================================================================
 -- ✨ Version sécurisée avec webhook chiffré
--- ✅ Protection contre l'accès non autorisé
--- ✅ Utilisation du module de sécurité
+-- ✅ Calcul K/D en Lua (pas en SQL) pour optimisation
 -- ================================================================================================
 
 local ESX = exports['es_extended']:getSharedObject()
@@ -132,23 +131,17 @@ function Formatter.TruncateName(name, maxLength)
     return name
 end
 
--- ✅ NOUVELLE FONCTION : Nettoyer les caractères invalides pour Discord
 function Formatter.SanitizeForDiscord(text)
     if not text then return "Inconnu" end
     
-    -- Convertir en string si ce n'est pas le cas
     text = tostring(text)
+    text = text:gsub("[%c%z]", "")
+    text = text:gsub("[\128-\255]+", function(c) return c end)
     
-    -- Remplacer les caractères de contrôle et caractères problématiques
-    text = text:gsub("[%c%z]", "") -- Supprime les caractères de contrôle
-    text = text:gsub("[\128-\255]+", function(c) return c end) -- Garde les UTF-8 valides
-    
-    -- Limiter la longueur pour éviter les dépassements
     if #text > 256 then
         text = text:sub(1, 253) .. "..."
     end
     
-    -- Si vide après nettoyage
     if text == "" or text == nil then
         return "Joueur"
     end
@@ -190,7 +183,7 @@ function CacheManager:Clear()
 end
 
 -- ================================================================================================
--- REQUÊTES BASE DE DONNÉES
+-- ✅ REQUÊTES BASE DE DONNÉES (OPTIMISÉES - K/D EN LUA)
 -- ================================================================================================
 local Database = {}
 
@@ -202,6 +195,7 @@ function Database.GetLeaderboard(callback)
     
     LogDebug("Récupération du classement depuis la BDD...")
     
+    -- ✅ REQUÊTE SIMPLIFIÉE (pas de CASE WHEN pour K/D)
     MySQL.Async.fetchAll([[
         SELECT 
             player_name,
@@ -209,20 +203,53 @@ function Database.GetLeaderboard(callback)
             deaths, 
             headshots, 
             best_streak,
-            total_playtime,
-            CASE 
-                WHEN deaths > 0 THEN ROUND(kills / deaths, 2) 
-                ELSE kills 
-            END as kd_ratio
+            total_playtime
         FROM gunfight_stats
-        ORDER BY kd_ratio DESC, kills DESC, best_streak DESC
-        LIMIT @limit
-    ]], {
-        ['@limit'] = Config.Discord.leaderboardLimit or 15
-    }, function(result)
+        WHERE kills > 0
+        ORDER BY kills DESC
+        LIMIT 50
+    ]], {}, function(result)
         if result then
-            LogDebug("Classement récupéré", {count = #result})
-            callback(result)
+            -- ✅ CALCULER K/D EN LUA
+            local players = {}
+            for i, data in ipairs(result) do
+                local kd_ratio = 0
+                if data.deaths and data.deaths > 0 then
+                    kd_ratio = data.kills / data.deaths
+                else
+                    kd_ratio = data.kills
+                end
+                
+                players[#players + 1] = {
+                    player_name = data.player_name,
+                    kills = data.kills,
+                    deaths = data.deaths,
+                    headshots = data.headshots,
+                    best_streak = data.best_streak,
+                    total_playtime = data.total_playtime,
+                    kd_ratio = kd_ratio
+                }
+            end
+            
+            -- ✅ TRIER EN LUA
+            table.sort(players, function(a, b)
+                if a.kd_ratio == b.kd_ratio then
+                    if a.kills == b.kills then
+                        return a.best_streak > b.best_streak
+                    end
+                    return a.kills > b.kills
+                end
+                return a.kd_ratio > b.kd_ratio
+            end)
+            
+            -- ✅ PRENDRE LES 15 PREMIERS
+            local top15 = {}
+            for i = 1, math.min(15, #players) do
+                top15[#top15 + 1] = players[i]
+            end
+            
+            LogDebug("Classement récupéré", {count = #top15})
+            callback(top15)
         else
             LogError("Erreur lors de la récupération du classement")
             callback(nil)
@@ -233,20 +260,32 @@ end
 function Database.GetGlobalStats(callback)
     LogDebug("Récupération des statistiques globales...")
     
+    -- ✅ REQUÊTE SIMPLIFIÉE (pas de CASE WHEN pour avg_kd)
     MySQL.Async.fetchAll([[
         SELECT 
             COUNT(*) as total_players,
             SUM(kills) as total_kills,
             SUM(deaths) as total_deaths,
             MAX(best_streak) as best_streak_ever,
-            SUM(total_playtime) as total_playtime,
-            AVG(CASE WHEN deaths > 0 THEN kills / deaths ELSE kills END) as avg_kd
+            SUM(total_playtime) as total_playtime
         FROM gunfight_stats
         WHERE kills > 0
     ]], {}, function(result)
         if result and result[1] then
+            -- ✅ CALCULER avg_kd EN LUA
+            local stats = result[1]
+            local avg_kd = 0
+            
+            if stats.total_deaths and stats.total_deaths > 0 then
+                avg_kd = stats.total_kills / stats.total_deaths
+            elseif stats.total_kills then
+                avg_kd = stats.total_kills
+            end
+            
+            stats.avg_kd = avg_kd
+            
             LogDebug("Stats globales récupérées")
-            callback(result[1])
+            callback(stats)
         else
             LogWarning("Aucune statistique globale trouvée")
             callback({
@@ -294,7 +333,6 @@ local function CreateEmbedModern(leaderboard, globalStats)
             local data = leaderboard[i]
             local medal = EMOJIS.rank[i] or "▫️"
             
-            -- ✅ NETTOYAGE DES DONNÉES
             local playerName = Formatter.SanitizeForDiscord(data.player_name or "Joueur")
             playerName = Formatter.TruncateName(playerName, 22)
             
@@ -302,7 +340,6 @@ local function CreateEmbedModern(leaderboard, globalStats)
             local kills = tonumber(data.kills) or 0
             local deaths = tonumber(data.deaths) or 0
             
-            -- Vérification que les valeurs sont valides
             if kd > 999 then kd = 999 end
             if kills > 999999 then kills = 999999 end
             if deaths > 999999 then deaths = 999999 end
@@ -363,7 +400,6 @@ function SendLeaderboardToDiscord(forceRefresh)
         return
     end
     
-    -- ✅ RÉCUPÉRATION SÉCURISÉE DU WEBHOOK
     local webhookUrl = Config.Discord.GetWebhookUrl()
     
     if not webhookUrl then
@@ -374,7 +410,6 @@ function SendLeaderboardToDiscord(forceRefresh)
     LogInfo("═══════════════════════════════════════════════")
     LogInfo("Préparation de l'envoi du classement Discord...")
     
-    -- Vérifier le cache
     if not forceRefresh then
         local cachedLeaderboard, cachedStats = CacheManager:Get()
         if cachedLeaderboard and cachedStats then
@@ -384,7 +419,6 @@ function SendLeaderboardToDiscord(forceRefresh)
         end
     end
     
-    -- Récupérer depuis la BDD
     Database.GetLeaderboard(function(leaderboard)
         if not leaderboard then
             LogError("Impossible de récupérer le classement")
@@ -403,16 +437,11 @@ function ProcessAndSendEmbed(leaderboard, globalStats, webhookUrl)
     
     local embed = CreateEmbedModern(leaderboard, globalStats)
     
-    -- ✅ VALIDATION DE LA TAILLE DE L'EMBED
-    -- Discord limite : titre (256), description (4096), chaque field value (1024)
-    -- Total embed : 6000 caractères max
-    
     if embed.description and #embed.description > 4096 then
         embed.description = embed.description:sub(1, 4093) .. "..."
         LogWarning("Description tronquée (>4096 caractères)")
     end
     
-    -- Vérifier chaque field
     if embed.fields then
         for i, field in ipairs(embed.fields) do
             if field.value and #field.value > 1024 then
@@ -436,7 +465,6 @@ function ProcessAndSendEmbed(leaderboard, globalStats, webhookUrl)
     
     local jsonPayload = json.encode(payload)
     
-    -- ✅ VÉRIFICATION DE LA TAILLE DU PAYLOAD
     if #jsonPayload > 20000 then
         LogError("Payload trop grand (>20KB), envoi annulé")
         LogError("Taille: " .. #jsonPayload .. " octets")
@@ -451,12 +479,6 @@ function ProcessAndSendEmbed(leaderboard, globalStats, webhookUrl)
         elseif statusCode == 400 then
             LogError(string.format("Erreur 400 - Requête invalide (Code HTTP: %d)", statusCode))
             LogError("Réponse Discord: " .. tostring(responseText))
-            LogError("Cela peut être dû à:")
-            LogError("  - Des caractères invalides dans les noms de joueurs")
-            LogError("  - Un embed trop grand (>6000 caractères)")
-            LogError("  - Des emojis non supportés")
-            LogError("Payload envoyé (premiers 500 chars):")
-            LogError(jsonPayload:sub(1, 500))
         else
             LogError(string.format("Échec de l'envoi (Code HTTP: %d)", statusCode))
             LogError("Réponse: " .. tostring(responseText))
@@ -514,7 +536,7 @@ end, false)
 -- ================================================================================================
 if Config.Discord.enabled and Config.Discord.autoSend then
     Citizen.CreateThread(function()
-        Wait(60000) -- 1 minute
+        Wait(60000)
         
         LogSuccess("Thread d'envoi automatique démarré")
         LogInfo(string.format("Intervalle: %d heures", math.floor((Config.Discord.updateInterval or 21600) / 3600)))
@@ -540,8 +562,8 @@ Citizen.CreateThread(function()
     Wait(2000)
     
     print("^2╔═══════════════════════════════════════════════╗^0")
-    print("^2║  GUNFIGHT ARENA - Discord Leaderboard v4.0  ║^0")
-    print("^2║           MODE SÉCURISÉ ACTIVÉ ✓             ║^0")
+    print("^2║  GUNFIGHT ARENA - Discord Leaderboard v4.1  ║^0")
+    print("^2║         MODE OPTIMISÉ ACTIVÉ ✓               ║^0")
     print("^2╚═══════════════════════════════════════════════╝^0")
     print("")
     LogInfo(string.format("État: %s", Config.Discord.enabled and "^2ACTIVÉ^0" or "^1DÉSACTIVÉ^0"))
