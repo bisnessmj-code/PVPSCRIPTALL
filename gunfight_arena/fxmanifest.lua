@@ -1,4 +1,3 @@
-shared_script '@WaveShield/resource/include.lua'
 
 fx_version 'cerulean'
 game 'gta5'
@@ -69,6 +68,8 @@ files {
     'html/images/zone8.webp',
     'html/images/zone9.webp',
     'html/images/zone10.webp',
+    -- Logo (peut rester en PNG ou passer en WebP)
+    'html/images/logo.wep',
     -- Image par défaut
     'html/images/default.webp'
 }
