@@ -4,8 +4,9 @@
     ║                   Performance First Design                     ║
     ╚═══════════════════════════════════════════════════════════════╝
     
-    IMPORTANT : Toutes les valeurs de ce fichier sont configurables
-    Aucune valeur hardcodée dans le code principal
+    CORRECTIFS APPLIQUÉS :
+    - Hystérésis renforcée pour éviter clignotement marker
+    - Délais réseau augmentés pour synchronisation véhicule
 ]]
 
 Config = {}
@@ -14,45 +15,42 @@ Config = {}
 -- DEBUG & LOGS
 -- ═════════════════════════════════════════════════════════════════
 Config.Debug = {
-    Enabled = true,          -- Active/désactive tous les logs
-    Client = true,           -- Logs client
-    Server = true,           -- Logs serveur
-    Matchmaking = true,      -- Logs matchmaking
-    Buckets = true,          -- Logs routing buckets
-    Commands = true          -- Logs commandes admin
+    Enabled = true,
+    Client = true,
+    Server = true,
+    Matchmaking = true,
+    Buckets = true,
+    Commands = true
 }
 
 -- ═════════════════════════════════════════════════════════════════
 -- SYSTÈME DE MATCHMAKING
 -- ═════════════════════════════════════════════════════════════════
 Config.Matchmaking = {
-    MinPlayers = 2,                  -- Nombre de joueurs minimum pour lancer une partie
-    MaxWaitTime = 300,               -- Temps max d'attente en secondes (5 min)
-    StartingBucketId = 2000,         -- ID de départ des routing buckets
-    MaxConcurrentGames = 50,         -- Nombre max de parties simultanées
-    PreStartDelay = 2000,            -- Délai avant le départ (ms) - pour connexions lentes
+    MinPlayers = 2,
+    MaxWaitTime = 300,
+    StartingBucketId = 2000,
+    MaxConcurrentGames = 50,
+    PreStartDelay = 3000,            -- CORRECTIF : Augmenté à 3s pour meilleure sync
 }
 
 -- ═════════════════════════════════════════════════════════════════
 -- SYSTÈME DE ROUNDS
 -- ═════════════════════════════════════════════════════════════════
 Config.Rounds = {
-    TotalRounds = 4,                 -- Nombre total de rounds par partie
-    RoundDuration = 105,             -- Durée max d'un round en secondes (1min 45s)
+    TotalRounds = 4,
+    RoundDuration = 105,
     
-    -- Vérification de distance pour fuite réussie
-    DistanceCheckInterval = 15,      -- Vérification toutes les 15 secondes
-    EscapeDistance = 100.0,          -- Distance minimale pour fuite réussie (mètres)
+    DistanceCheckInterval = 15,
+    EscapeDistance = 100.0,
     
-    -- Système de capture
-    CaptureDistance = 5.0,           -- Distance max pour être "collé" (mètres)
-    CaptureSpeed = 2.0,              -- Vitesse max pour considérer "à l'arrêt" (km/h)
-    CaptureTime = 5.0,               -- Temps pour compléter la capture (secondes)
-    CaptureCheckInterval = 100,      -- Intervalle de vérification capture (ms)
+    CaptureDistance = 5.0,
+    CaptureSpeed = 2.0,
+    CaptureTime = 5.0,
+    CaptureCheckInterval = 100,
     
-    -- Délais entre rounds
-    RoundEndDelay = 5000,            -- Délai après fin round avant nouveau round (ms)
-    RespawnDelay = 1000,             -- Délai pour supprimer véhicules et respawn (ms)
+    RoundEndDelay = 5000,
+    RespawnDelay = 2000,             -- CORRECTIF : Augmenté à 2s pour meilleure suppression véhicule
 }
 
 -- ═════════════════════════════════════════════════════════════════
@@ -64,24 +62,22 @@ Config.EndPoint = vector4(241.041764, -885.468140, 30.476196, 70.86614)
 -- PED D'INSCRIPTION
 -- ═════════════════════════════════════════════════════════════════
 Config.Ped = {
-    Model = 'a_m_y_business_03',     -- Modèle du PED
-    Coords = vector4(230.637360, -869.986816, 30.476196, 345.826782),
+    Model = 'a_m_y_business_03',
+    Coords = vector4(230.637360, -869.986816, 29.476196, 345.826782),
     
-    -- Distance d'interaction (optimisation CPU)
-    DrawDistance = 50.0,             -- Distance pour afficher le marker
-    InteractDistance = 2.5,          -- Distance pour afficher le texte d'aide
-    ToleranceZone = 10.0,            -- Zone de tolérance pour éviter le clignotement (hysteresis)
+    -- CORRECTIF : Hystérésis renforcée
+    DrawDistance = 10.0,
+    InteractDistance = 2.5,
+    ToleranceZone = 15.0,            -- CORRECTIF : Augmenté de 10 à 15 pour éviter clignotement
     
-    -- Marker visuel
     Marker = {
-        Type = 1,                    -- Type de marker (1 = cylindre)
+        Type = 1,
         Color = {r = 0, g = 255, b = 0, a = 100},
         Size = {x = 1.5, y = 1.5, z = 1.0},
         BobUpDown = true,
         Rotate = false
     },
     
-    -- Texte d'interaction
     HelpText = "Appuyez sur ~INPUT_CONTEXT~ pour rejoindre la file d'attente"
 }
 
@@ -105,11 +101,11 @@ Config.Spawns = {
 -- VÉHICULES
 -- ═════════════════════════════════════════════════════════════════
 Config.Vehicle = {
-    Model = 'adder',                 -- Modèle de véhicule (changeable)
-    Plate = 'FIGHTLG',              -- Plaque d'immatriculation
-    Locked = true,                   -- Véhicule verrouillé (empêche de sortir)
-    Invincible = false,              -- Véhicule invincible ?
-    GodMode = false                  -- Mode dieu ?
+    Model = 'adder',
+    Plate = 'FIGHTLG',
+    Locked = true,
+    Invincible = false,
+    GodMode = false
 }
 
 -- ═════════════════════════════════════════════════════════════════
@@ -117,21 +113,21 @@ Config.Vehicle = {
 -- ═════════════════════════════════════════════════════════════════
 Config.Timings = {
     -- Client
-    PedCheckInterval = 1000,         -- Intervalle de vérification de distance du PED (ms)
-    MarkerUpdateRate = 100,          -- Taux de rafraîchissement du marker quand proche (ms)
+    PedCheckInterval = 1000,
+    MarkerUpdateRate = 100,
     
     -- Server
-    MatchmakingCheckInterval = 2000, -- Intervalle de vérification du matchmaking (ms)
-    GameCleanupDelay = 5000,         -- Délai avant nettoyage d'une partie terminée (ms)
+    MatchmakingCheckInterval = 2000,
+    GameCleanupDelay = 5000,
 }
 
 -- ═════════════════════════════════════════════════════════════════
 -- PERMISSIONS ADMIN
 -- ═════════════════════════════════════════════════════════════════
 Config.Permissions = {
-    KickAll = 'admin',               -- Permission pour /kickallcourse
-    KickById = 'admin',              -- Permission pour /kickbyid
-    ViewStatus = 'admin'             -- Permission pour voir le statut
+    KickAll = 'admin',
+    KickById = 'admin',
+    ViewStatus = 'admin'
 }
 
 -- ═════════════════════════════════════════════════════════════════
@@ -178,12 +174,10 @@ Config.Lang = {
 -- FONCTIONS UTILITAIRES DE CONFIG
 -- ═════════════════════════════════════════════════════════════════
 
--- Récupère un spawn aléatoire
 function Config.GetRandomSpawn()
     return Config.Spawns[math.random(#Config.Spawns)]
 end
 
--- Vérifie si le debug est actif pour un module
 function Config.IsDebugEnabled(module)
     if not Config.Debug.Enabled then return false end
     if module and Config.Debug[module] ~= nil then

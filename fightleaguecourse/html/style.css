@@ -35,7 +35,6 @@ body {
     border-radius: 15px;
     padding: 30px 50px;
     backdrop-filter: blur(10px);
-    box-shadow: 0 0 40px rgba(255, 0, 0, 0.3);
     min-width: 500px;
 }
 
@@ -45,7 +44,6 @@ body {
     color: #ff3333;
     text-align: center;
     margin-bottom: 20px;
-    text-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
     letter-spacing: 3px;
     animation: pulse 1.5s infinite;
 }
@@ -63,7 +61,6 @@ body {
     border-radius: 20px;
     overflow: hidden;
     position: relative;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .capture-bar-fill {
@@ -72,7 +69,6 @@ body {
     border-radius: 18px;
     transition: width 0.1s linear;
     width: 0%;
-    box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
     position: relative;
     overflow: hidden;
 }
@@ -114,7 +110,6 @@ body {
     font-weight: bold;
     color: #ffffff;
     margin-top: 10px;
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
 }
 
 .capture-hint {
@@ -143,7 +138,6 @@ body {
     border-radius: 20px;
     padding: 50px 80px;
     backdrop-filter: blur(15px);
-    box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
     min-width: 600px;
     text-align: center;
 }
@@ -159,19 +153,16 @@ body {
     font-size: 72px;
     font-weight: bold;
     margin-bottom: 20px;
-    text-shadow: 0 0 30px currentColor;
     letter-spacing: 5px;
     animation: titlePulse 1s infinite;
 }
 
 .result-title.victory {
     color: #00ff00;
-    text-shadow: 0 0 30px #00ff00, 0 0 60px #00ff00;
 }
 
 .result-title.defeat {
     color: #ff0000;
-    text-shadow: 0 0 30px #ff0000, 0 0 60px #ff0000;
 }
 
 .result-reason {
@@ -201,7 +192,6 @@ body {
     font-size: 48px;
     font-weight: bold;
     color: #ffffff;
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -222,7 +212,6 @@ body {
     border-radius: 25px;
     padding: 60px 100px;
     backdrop-filter: blur(20px);
-    box-shadow: 0 0 80px rgba(0, 0, 0, 0.9);
     min-width: 700px;
     text-align: center;
 }
@@ -231,24 +220,20 @@ body {
     font-size: 96px;
     font-weight: bold;
     margin-bottom: 20px;
-    text-shadow: 0 0 40px currentColor;
     letter-spacing: 8px;
     animation: titlePulse 1.5s infinite;
 }
 
 .game-end-title.victory {
     color: #00ff00;
-    text-shadow: 0 0 40px #00ff00, 0 0 80px #00ff00;
 }
 
 .game-end-title.defeat {
     color: #ff0000;
-    text-shadow: 0 0 40px #ff0000, 0 0 80px #ff0000;
 }
 
 .game-end-title.draw {
     color: #ffaa00;
-    text-shadow: 0 0 40px #ffaa00, 0 0 80px #ffaa00;
 }
 
 .game-end-subtitle {
@@ -277,7 +262,6 @@ body {
     font-size: 64px;
     font-weight: bold;
     color: #ffffff;
-    text-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
 }
 
 .game-end-message {

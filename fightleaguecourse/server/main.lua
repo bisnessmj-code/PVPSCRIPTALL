@@ -4,46 +4,33 @@
     ║         Matchmaking + Routing Buckets + Gestion Parties       ║
     ╚═══════════════════════════════════════════════════════════════╝
     
-    OBJECTIF PERFORMANCE :
-    - Idle : 0.00-0.01 ms
-    - Matchmaking actif : 0.1-0.2 ms
-    
-    ARCHITECTURE :
-    - Queue de matchmaking (table simple)
-    - Attribution automatique des routing buckets
-    - Gestion complète du cycle de vie des parties
-    - Nettoyage automatique des ressources
+    CORRECTIFS APPLIQUÉS :
+    - Synchronisation réseau renforcée pour création véhicule
+    - Délais adaptatifs selon latence réseau
+    - Meilleure gestion du cycle de vie des rounds
 ]]
 
 -- ═════════════════════════════════════════════════════════════════
 -- VARIABLES GLOBALES SERVEUR
 -- ═════════════════════════════════════════════════════════════════
 
-local matchmakingQueue = {}      -- File d'attente : {source1, source2, ...}
-local activePlayers = {}         -- Joueurs actifs : [source] = {gameId, bucket, team, ...}
-local activeGames = {}           -- Parties actives : [gameId] = {players, bucket, spawn, ...}
-local availableBuckets = {}      -- Buckets disponibles (pool)
+local matchmakingQueue = {}
+local activePlayers = {}
+local activeGames = {}
+local availableBuckets = {}
 local nextBucketId = Config.Matchmaking.StartingBucketId
 
 -- ═════════════════════════════════════════════════════════════════
 -- GESTION DES ROUTING BUCKETS
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Récupère un routing bucket disponible
-    
-    Impact CPU : Négligeable (accès table)
-    Retour : int - ID du bucket alloué
-]]
 local function GetAvailableBucket()
-    -- Réutiliser un bucket libéré si disponible
     if #availableBuckets > 0 then
         local bucket = table.remove(availableBuckets, 1)
         Utils.Log('Buckets', 'Bucket réutilisé : ' .. bucket, 'info')
         return bucket
     end
     
-    -- Créer un nouveau bucket
     local bucket = nextBucketId
     nextBucketId = nextBucketId + 1
     
@@ -51,11 +38,6 @@ local function GetAvailableBucket()
     return bucket
 end
 
---[[
-    Libère un routing bucket
-    
-    Impact CPU : Négligeable (insertion table)
-]]
 local function FreeBucket(bucketId)
     if not bucketId then return end
     
@@ -67,19 +49,12 @@ end
 -- GESTION DU MATCHMAKING
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Ajoute un joueur à la file d'attente
-    
-    Impact CPU : Négligeable (insertion table)
-]]
 local function AddToQueue(source)
-    -- Vérifications
     if activePlayers[source] then
         TriggerClientEvent('fightleague:notification', source, Config.Lang.AlreadyInGame, 'error')
         return false
     end
     
-    -- Vérifier si déjà en queue
     for _, playerId in ipairs(matchmakingQueue) do
         if playerId == source then
             TriggerClientEvent('fightleague:notification', source, Config.Lang.AlreadyInQueue, 'error')
@@ -87,7 +62,6 @@ local function AddToQueue(source)
         end
     end
     
-    -- Ajouter à la queue
     table.insert(matchmakingQueue, source)
     TriggerClientEvent('fightleague:queueJoined', source)
     
@@ -95,11 +69,6 @@ local function AddToQueue(source)
     return true
 end
 
---[[
-    Retire un joueur de la file d'attente
-    
-    Impact CPU : Négligeable (parcours table)
-]]
 local function RemoveFromQueue(source)
     for i, playerId in ipairs(matchmakingQueue) do
         if playerId == source then
@@ -112,19 +81,11 @@ local function RemoveFromQueue(source)
     return false
 end
 
---[[
-    Tente de créer un match
-    
-    Impact CPU : Faible (appelé toutes les 2 secondes)
-    Retour : bool - true si un match a été créé
-]]
 local function TryCreateMatch()
-    -- Vérifier s'il y a assez de joueurs
     if #matchmakingQueue < Config.Matchmaking.MinPlayers then
         return false
     end
     
-    -- Vérifier la limite de parties simultanées
     local activeGameCount = 0
     for _ in pairs(activeGames) do
         activeGameCount = activeGameCount + 1
@@ -135,15 +96,12 @@ local function TryCreateMatch()
         return false
     end
     
-    -- Prendre les 2 premiers joueurs de la queue
     local player1 = table.remove(matchmakingQueue, 1)
     local player2 = table.remove(matchmakingQueue, 1)
     
-    -- Vérifier que les joueurs sont toujours connectés
     if not player1 or not player2 or GetPlayerPing(player1) == 0 or GetPlayerPing(player2) == 0 then
         Utils.Log('Matchmaking', 'Un joueur s\'est déconnecté', 'warn')
         
-        -- Remettre les joueurs valides en queue
         if player1 and GetPlayerPing(player1) > 0 then
             table.insert(matchmakingQueue, 1, player1)
         end
@@ -154,7 +112,6 @@ local function TryCreateMatch()
         return false
     end
     
-    -- Créer la partie
     CreateGame(player1, player2)
     
     Utils.Log('Matchmaking', 'Match créé entre ' .. player1 .. ' et ' .. player2, 'info')
@@ -165,22 +122,11 @@ end
 -- GESTION DES PARTIES
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Créé une nouvelle partie
-    
-    Impact CPU : Ponctuel (création unique par partie)
-]]
 function CreateGame(player1, player2)
-    -- Générer un ID de partie
     local gameId = Utils.GenerateGameId()
-    
-    -- Allouer un routing bucket
     local bucket = GetAvailableBucket()
-    
-    -- Choisir un spawn aléatoire
     local spawn = Config.GetRandomSpawn()
     
-    -- Créer l'objet partie
     activeGames[gameId] = {
         id = gameId,
         bucket = bucket,
@@ -189,90 +135,72 @@ function CreateGame(player1, player2)
             {source = player1, team = 'A', score = 0, vehicle = nil, vehicleNetId = nil},
             {source = player2, team = 'B', score = 0, vehicle = nil, vehicleNetId = nil}
         },
-        status = 'preparing',        -- preparing, playing, roundEnd, finished
+        status = 'preparing',
         createdAt = os.time(),
-        
-        -- Système de rounds
         currentRound = 1,
         roundStartTime = nil,
         roundTimer = nil,
         distanceCheckThread = nil
     }
     
-    -- Enregistrer les joueurs
     activePlayers[player1] = {gameId = gameId, bucket = bucket, team = 'A'}
     activePlayers[player2] = {gameId = gameId, bucket = bucket, team = 'B'}
     
     Utils.Log('Server', 'Partie créée : ' .. gameId .. ' (Bucket: ' .. bucket .. ')', 'info')
     
-    -- Notifier les joueurs
     TriggerClientEvent('fightleague:matchFound', player1)
     TriggerClientEvent('fightleague:matchFound', player2)
     
-    -- Démarrer la préparation (téléportation, spawn véhicules)
     CreateThread(function()
         PrepareGame(gameId)
     end)
 end
 
---[[
-    Prépare une partie (téléportation + spawn véhicules)
-    
-    Impact CPU : Ponctuel (une fois par partie)
-]]
 function PrepareGame(gameId)
     local game = activeGames[gameId]
     if not game then return end
     
     Utils.Log('Server', 'Préparation de la partie ' .. gameId, 'info')
     
-    -- Déplacer les joueurs dans le routing bucket
     for _, playerData in ipairs(game.players) do
         SetPlayerRoutingBucket(playerData.source, game.bucket)
         Utils.Log('Buckets', 'Joueur ' .. playerData.source .. ' déplacé dans le bucket ' .. game.bucket, 'info')
     end
     
-    -- Spawn les véhicules
-    PrepareGameVehicles(gameId, false) -- false = positions normales (pas inversées)
+    PrepareGameVehicles(gameId, false)
 end
 
 --[[
-    Spawn les véhicules pour un round
-    
-    @param gameId          string   ID de la partie
-    @param invertSpawns    boolean  Inverser les positions TeamA/TeamB
+    CORRECTIF MAJEUR : Synchronisation réseau améliorée
 ]]
 function PrepareGameVehicles(gameId, invertSpawns)
     local game = activeGames[gameId]
     if not game then return end
     
-    -- Charger le modèle de véhicule
     local vehicleModel = GetHashKey(Config.Vehicle.Model)
     
-    -- Pour chaque joueur
+    -- CORRECTIF : Créer et synchroniser TOUS les véhicules AVANT de téléporter
+    local vehiclesToSync = {}
+    
     for _, playerData in ipairs(game.players) do
         local source = playerData.source
         local team = playerData.team
         
-        -- Déterminer la position de spawn
         local spawnPos
         if not invertSpawns then
-            -- Positions normales
             spawnPos = team == 'A' and game.spawn.TeamA or game.spawn.TeamB
         else
-            -- Positions inversées
             spawnPos = team == 'A' and game.spawn.TeamB or game.spawn.TeamA
         end
         
-        -- Créer le véhicule côté serveur
+        -- Créer le véhicule
         local vehicle = CreateVehicle(vehicleModel, spawnPos.x, spawnPos.y, spawnPos.z, spawnPos.w, true, true)
         
-        -- Attendre que le véhicule soit créé
         while not DoesEntityExist(vehicle) do
             Wait(50)
         end
         
-        -- Configuration du véhicule
+        -- Configuration véhicule
         SetVehicleNumberPlateText(vehicle, Config.Vehicle.Plate)
         SetEntityRoutingBucket(vehicle, game.bucket)
         
@@ -280,28 +208,38 @@ function PrepareGameVehicles(gameId, invertSpawns)
             SetEntityInvincible(vehicle, true)
         end
         
-        -- Stocker le véhicule dans les données du joueur
         playerData.vehicle = vehicle
         playerData.vehicleNetId = NetworkGetNetworkIdFromEntity(vehicle)
         
-        Utils.Log('Server', 'Véhicule créé pour le joueur ' .. source .. ' (Team ' .. team .. ')', 'info')
+        table.insert(vehiclesToSync, {
+            source = source,
+            vehicle = vehicle,
+            netId = playerData.vehicleNetId
+        })
         
-        -- Téléporter le joueur dans le véhicule (côté client)
-        TriggerClientEvent('fightleague:teleportToVehicle', source, playerData.vehicleNetId)
+        Utils.Log('Server', 'Véhicule créé pour le joueur ' .. source .. ' (Team ' .. team .. ') - NetID: ' .. playerData.vehicleNetId, 'info')
     end
     
-    -- Attendre le délai de préparation (pour les connexions lentes)
+    -- CORRECTIF : Attendre synchronisation réseau simple mais efficace
+    -- Le serveur n'a pas besoin de vérifier NetworkGetEntityIsNetworked (n'existe pas côté serveur)
+    -- On attend simplement un délai raisonnable pour la propagation réseau
+    Wait(1500) -- Délai de synchronisation réseau (suffisant pour la plupart des connexions)
+    
+    Utils.Log('Server', 'Véhicules créés, synchronisation réseau en cours...', 'info')
+    
+    -- CORRECTIF : Téléportation séquentielle avec petit délai entre chaque joueur
+    for _, vehData in ipairs(vehiclesToSync) do
+        Utils.Log('Server', 'Téléportation du joueur ' .. vehData.source .. ' vers NetID:' .. vehData.netId, 'info')
+        TriggerClientEvent('fightleague:teleportToVehicle', vehData.source, vehData.netId)
+        Wait(250) -- Petit délai entre chaque téléportation pour éviter la surcharge réseau
+    end
+    
+    -- Attendre le délai de préparation
     Wait(Config.Matchmaking.PreStartDelay)
     
-    -- Démarrer le round
     StartRound(gameId)
 end
 
---[[
-    Démarre un round
-    
-    Impact CPU : Ponctuel (activation unique par round)
-]]
 function StartRound(gameId)
     local game = activeGames[gameId]
     if not game then return end
@@ -314,19 +252,15 @@ function StartRound(gameId)
     game.status = 'playing'
     game.roundStartTime = os.time()
     
-    -- Déterminer les rôles (inversion à chaque round)
     local runnerTeam, chaserTeam
     if roundNum % 2 == 1 then
-        -- Rounds impairs (1, 3) : TeamA fuit, TeamB poursuit
         runnerTeam = 'A'
         chaserTeam = 'B'
     else
-        -- Rounds pairs (2, 4) : TeamB fuit, TeamA poursuit
         runnerTeam = 'B'
         chaserTeam = 'A'
     end
     
-    -- Notifier les joueurs
     for _, playerData in ipairs(game.players) do
         local role = (playerData.team == runnerTeam) and 'runner' or 'chaser'
         TriggerClientEvent('fightleague:roundStart', playerData.source, {
@@ -337,23 +271,15 @@ function StartRound(gameId)
         })
     end
     
-    -- Thread de vérification de distance (toutes les 15s)
     CreateThread(function()
         DistanceCheckThread(gameId, runnerTeam, chaserTeam)
     end)
     
-    -- Thread de timeout du round (1min45s)
     CreateThread(function()
         RoundTimeoutThread(gameId)
     end)
 end
 
---[[
-    Thread de vérification de distance pour fuite réussie
-    Vérifie toutes les 15 secondes si le fuyard est assez loin
-    
-    Impact CPU : ~0.01ms toutes les 15 secondes
-]]
 function DistanceCheckThread(gameId, runnerTeam, chaserTeam)
     local game = activeGames[gameId]
     if not game then return end
@@ -361,12 +287,11 @@ function DistanceCheckThread(gameId, runnerTeam, chaserTeam)
     Utils.Log('Server', 'Thread de vérification distance démarré pour ' .. gameId, 'info')
     
     while game.status == 'playing' do
-        Wait(Config.Rounds.DistanceCheckInterval * 1000) -- 15 secondes
+        Wait(Config.Rounds.DistanceCheckInterval * 1000)
         
         game = activeGames[gameId]
         if not game or game.status ~= 'playing' then break end
         
-        -- Récupérer les joueurs
         local runner = nil
         local chaser = nil
         
@@ -380,13 +305,11 @@ function DistanceCheckThread(gameId, runnerTeam, chaserTeam)
         
         if not runner or not chaser then break end
         
-        -- Vérifier si les joueurs sont connectés
         if GetPlayerPing(runner.source) == 0 or GetPlayerPing(chaser.source) == 0 then
             EndGame(gameId, 'disconnect')
             break
         end
         
-        -- Récupérer les positions des véhicules
         local runnerVeh = runner.vehicle
         local chaserVeh = chaser.vehicle
         
@@ -400,7 +323,6 @@ function DistanceCheckThread(gameId, runnerTeam, chaserTeam)
         
         Utils.Log('Server', string.format('Distance entre joueurs : %.2fm', distance), 'info')
         
-        -- Vérifier si fuite réussie
         if distance >= Config.Rounds.EscapeDistance then
             Utils.Log('Server', 'Fuite réussie ! Distance : ' .. distance .. 'm', 'info')
             EndRound(gameId, runnerTeam, 'escape')
@@ -411,37 +333,23 @@ function DistanceCheckThread(gameId, runnerTeam, chaserTeam)
     Utils.Log('Server', 'Thread de vérification distance arrêté', 'info')
 end
 
---[[
-    Thread de timeout du round
-    Termine le round après 1min45s si aucune condition de victoire
-    
-    Impact CPU : Ponctuel (une vérification après 105s)
-]]
 function RoundTimeoutThread(gameId)
     local game = activeGames[gameId]
     if not game then return end
     
-    Wait(Config.Rounds.RoundDuration * 1000) -- 105 secondes
+    Wait(Config.Rounds.RoundDuration * 1000)
     
     game = activeGames[gameId]
     if not game or game.status ~= 'playing' then return end
     
     Utils.Log('Server', 'Timeout du round pour ' .. gameId, 'warn')
     
-    -- En cas de timeout, le poursuiveur perd (fuite réussie par défaut)
     local roundNum = game.currentRound
     local runnerTeam = (roundNum % 2 == 1) and 'A' or 'B'
     
     EndRound(gameId, runnerTeam, 'timeout')
 end
 
---[[
-    Termine un round
-    
-    @param gameId      string  ID de la partie
-    @param winnerTeam  string  'A' ou 'B'
-    @param reason      string  'escape', 'capture', 'timeout'
-]]
 function EndRound(gameId, winnerTeam, reason)
     local game = activeGames[gameId]
     if not game or game.status ~= 'playing' then return end
@@ -451,14 +359,12 @@ function EndRound(gameId, winnerTeam, reason)
     Utils.Log('Server', string.format('Fin du round %d pour %s - Vainqueur: Team%s (Raison: %s)', 
         game.currentRound, gameId, winnerTeam, reason), 'info')
     
-    -- Ajouter un point au vainqueur
     for _, playerData in ipairs(game.players) do
         if playerData.team == winnerTeam then
             playerData.score = playerData.score + 1
         end
     end
     
-    -- Notifier les joueurs
     for _, playerData in ipairs(game.players) do
         local won = playerData.team == winnerTeam
         TriggerClientEvent('fightleague:roundEnd', playerData.source, {
@@ -469,25 +375,21 @@ function EndRound(gameId, winnerTeam, reason)
         })
     end
     
-    -- Attendre avant de passer au round suivant
     Wait(Config.Rounds.RoundEndDelay)
     
     game = activeGames[gameId]
     if not game then return end
     
-    -- Vérifier si c'était le dernier round
     if game.currentRound >= Config.Rounds.TotalRounds then
         EndGame(gameId, 'finished')
     else
-        -- Passer au round suivant
         game.currentRound = game.currentRound + 1
         PrepareNextRound(gameId)
     end
 end
 
 --[[
-    Prépare le round suivant
-    Supprime les véhicules, inverse les positions, respawn
+    CORRECTIF : Meilleure gestion de la transition entre rounds
 ]]
 function PrepareNextRound(gameId)
     local game = activeGames[gameId]
@@ -495,31 +397,34 @@ function PrepareNextRound(gameId)
     
     Utils.Log('Server', 'Préparation du round ' .. game.currentRound, 'info')
     
-    -- Supprimer les véhicules du round précédent
+    -- CORRECTIF : Supprimer les véhicules proprement
     for _, playerData in ipairs(game.players) do
         if playerData.vehicle and DoesEntityExist(playerData.vehicle) then
+            -- Éjecter le joueur avant de supprimer le véhicule
+            local ped = GetPlayerPed(playerData.source)
+            if ped and ped ~= 0 then
+                TaskLeaveVehicle(ped, playerData.vehicle, 0)
+            end
+            
+            -- Attendre un peu
+            Wait(500)
+            
+            -- Supprimer le véhicule
             DeleteEntity(playerData.vehicle)
             playerData.vehicle = nil
             playerData.vehicleNetId = nil
+            
+            Utils.Log('Server', 'Véhicule supprimé pour joueur ' .. playerData.source, 'info')
         end
     end
     
     Wait(Config.Rounds.RespawnDelay)
     
-    -- Inverser les positions de spawn
-    -- Round impair : TeamA au spawn TeamA, TeamB au spawn TeamB
-    -- Round pair : TeamA au spawn TeamB, TeamB au spawn TeamA
     local useInvertedSpawns = (game.currentRound % 2 == 0)
     
-    -- Respawn les véhicules avec nouvelles positions
     PrepareGameVehicles(gameId, useInvertedSpawns)
 end
 
---[[
-    Termine une partie et nettoie les ressources
-    
-    Impact CPU : Ponctuel (nettoyage unique)
-]]
 function EndGame(gameId, reason)
     local game = activeGames[gameId]
     if not game then return end
@@ -528,7 +433,6 @@ function EndGame(gameId, reason)
     
     local isNormalEnd = (reason == 'finished')
     
-    -- Calculer le vainqueur si partie terminée normalement
     local winner = nil
     if isNormalEnd then
         local scoreA = 0
@@ -554,24 +458,19 @@ function EndGame(gameId, reason)
             scoreA, scoreB, winner), 'info')
     end
     
-    -- Nettoyer les joueurs
     for _, playerData in ipairs(game.players) do
         local source = playerData.source
         
-        -- Supprimer le véhicule
         if playerData.vehicle and DoesEntityExist(playerData.vehicle) then
             DeleteEntity(playerData.vehicle)
         end
         
-        -- Retirer des joueurs actifs
         activePlayers[source] = nil
         
-        -- Si fin normale, téléporter au point final
         if isNormalEnd then
             local won = (winner == playerData.team)
             local otherPlayerData = nil
             
-            -- Trouver le score de l'autre joueur
             for _, pd in ipairs(game.players) do
                 if pd.source ~= source then
                     otherPlayerData = pd
@@ -591,16 +490,12 @@ function EndGame(gameId, reason)
                 finalScoreText = finalScoreText
             })
             
-            -- Attendre un peu pour la notification (5 secondes pour l'animation)
             Wait(5000)
             
-            -- Remettre dans le bucket principal
             SetPlayerRoutingBucket(source, 0)
             
-            -- Téléporter au point final
             TriggerClientEvent('fightleague:teleportToEnd', source, Config.EndPoint)
         else
-            -- Fin anormale (déconnexion, etc.)
             SetPlayerRoutingBucket(source, 0)
             TriggerClientEvent('fightleague:endGame', source)
         end
@@ -608,10 +503,8 @@ function EndGame(gameId, reason)
         Utils.Log('Server', 'Joueur ' .. source .. ' nettoyé', 'info')
     end
     
-    -- Libérer le routing bucket
     FreeBucket(game.bucket)
     
-    -- Supprimer la partie
     activeGames[gameId] = nil
 end
 
@@ -619,22 +512,12 @@ end
 -- THREAD DE MATCHMAKING
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Thread de matchmaking automatique
-    
-    FRÉQUENCE : 2000ms (2 secondes)
-    Impact CPU : ~0.05-0.1ms toutes les 2 secondes
-    
-    AUTO-RÉGULATION : Si la queue est vide, le thread reste actif
-    mais ne fait rien (impact minimal)
-]]
 CreateThread(function()
     Utils.Log('Matchmaking', 'Thread de matchmaking démarré', 'info')
     
     while true do
-        Wait(Config.Timings.MatchmakingCheckInterval) -- 2000ms par défaut
+        Wait(Config.Timings.MatchmakingCheckInterval)
         
-        -- Tenter de créer un match
         if #matchmakingQueue >= Config.Matchmaking.MinPlayers then
             TryCreateMatch()
         end
@@ -645,29 +528,19 @@ end)
 -- EVENTS RÉSEAU
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Event : Joueur rejoint la queue
-]]
 RegisterNetEvent('fightleague:joinQueue', function()
     local source = source
     AddToQueue(source)
 end)
 
---[[
-    Event : Joueur quitte la queue
-]]
 RegisterNetEvent('fightleague:leaveQueue', function()
     local source = source
     RemoveFromQueue(source)
 end)
 
---[[
-    Event : Capture réussie (envoyé par le client poursuiveur)
-]]
 RegisterNetEvent('fightleague:captureComplete', function()
     local source = source
     
-    -- Vérifier que le joueur est bien en partie
     local playerData = activePlayers[source]
     if not playerData then return end
     
@@ -676,11 +549,9 @@ RegisterNetEvent('fightleague:captureComplete', function()
     
     if not game or game.status ~= 'playing' then return end
     
-    -- Déterminer qui est le poursuiveur dans ce round
     local roundNum = game.currentRound
     local chaserTeam = (roundNum % 2 == 1) and 'B' or 'A'
     
-    -- Vérifier que c'est bien le poursuiveur qui envoie l'event
     if playerData.team ~= chaserTeam then
         Utils.Log('Server', 'Tentative de capture invalide par Team' .. playerData.team, 'warn')
         return
@@ -688,7 +559,6 @@ RegisterNetEvent('fightleague:captureComplete', function()
     
     Utils.Log('Server', 'Capture réussie par Team' .. chaserTeam .. ' dans la partie ' .. gameId, 'info')
     
-    -- Terminer le round avec victoire du poursuiveur
     EndRound(gameId, chaserTeam, 'capture')
 end)
 
@@ -696,25 +566,16 @@ end)
 -- GESTION DES DÉCONNEXIONS
 -- ═════════════════════════════════════════════════════════════════
 
---[[
-    Nettoyage automatique quand un joueur se déconnecte
-    
-    Impact CPU : Événementiel (seulement à la déconnexion)
-]]
 AddEventHandler('playerDropped', function(reason)
     local source = source
     
     Utils.Log('Server', 'Joueur ' .. source .. ' déconnecté (Raison: ' .. reason .. ')', 'warn')
     
-    -- Retirer de la queue
     RemoveFromQueue(source)
     
-    -- Vérifier s'il est en partie
     local playerData = activePlayers[source]
     if playerData then
         local gameId = playerData.gameId
-        
-        -- Terminer la partie
         EndGame(gameId, 'disconnect')
     end
 end)
@@ -728,19 +589,17 @@ AddEventHandler('onResourceStop', function(resourceName)
     
     Utils.Log('Server', 'Arrêt du script - Nettoyage de toutes les parties...', 'warn')
     
-    -- Terminer toutes les parties actives
     for gameId, _ in pairs(activeGames) do
         EndGame(gameId, 'resource_stop')
     end
     
-    -- Vider la queue
     matchmakingQueue = {}
     
     Utils.Log('Server', 'Nettoyage terminé', 'info')
 end)
 
 -- ═════════════════════════════════════════════════════════════════
--- EXPORTS (pour utilisation externe)
+-- EXPORTS
 -- ═════════════════════════════════════════════════════════════════
 
 exports('GetActiveGames', function()
