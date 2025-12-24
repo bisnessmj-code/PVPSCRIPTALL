@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FightLeague Course</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Interface de Capture -->
+    <div id="capture-ui" class="hidden">
+        <div class="capture-container">
+            <div class="capture-title">CAPTURE EN COURS</div>
+            <div class="capture-bar-container">
+                <div class="capture-bar" id="capture-bar">
+                    <div class="capture-bar-fill" id="capture-bar-fill"></div>
+                    <div class="capture-bar-glow"></div>
+                </div>
+                <div class="capture-percentage" id="capture-percentage">0%</div>
+            </div>
+            <div class="capture-hint">Maintenez la position !</div>
+        </div>
+    </div>
+
+    <!-- Interface de Résultat de Round -->
+    <div id="round-result-ui" class="hidden">
+        <div class="result-container">
+            <div class="result-round" id="result-round">ROUND 1</div>
+            <div class="result-title" id="result-title">VICTOIRE</div>
+            <div class="result-reason" id="result-reason">Fuite réussie</div>
+            <div class="result-score-container">
+                <div class="result-score">
+                    <span class="score-label">VOTRE SCORE</span>
+                    <span class="score-value" id="result-score">1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface de Fin de Partie -->
+    <div id="game-end-ui" class="hidden">
+        <div class="game-end-container">
+            <div class="game-end-title" id="game-end-title">VICTOIRE</div>
+            <div class="game-end-subtitle" id="game-end-subtitle">Vous avez gagné la partie !</div>
+            <div class="game-end-score-container">
+                <div class="game-end-final-score">
+                    <span class="final-score-label">SCORE FINAL</span>
+                    <span class="final-score-value" id="game-end-score">3 - 1</span>
+                </div>
+            </div>
+            <div class="game-end-message">Téléportation dans 3 secondes...</div>
+        </div>
+    </div>
+
+    <script src="nui://game/ui/jquery.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

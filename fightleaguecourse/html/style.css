@@ -1,0 +1,364 @@
+/* ═══════════════════════════════════════════════════════════════
+   FIGHTLEAGUE COURSE - STYLES NUI
+   ═══════════════════════════════════════════════════════════════ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INTERFACE DE CAPTURE
+   ═══════════════════════════════════════════════════════════════ */
+
+#capture-ui {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.capture-container {
+    background: linear-gradient(135deg, rgba(255, 0, 0, 0.15), rgba(200, 0, 0, 0.15));
+    border: 2px solid rgba(255, 0, 0, 0.5);
+    border-radius: 15px;
+    padding: 30px 50px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 40px rgba(255, 0, 0, 0.3);
+    min-width: 500px;
+}
+
+.capture-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ff3333;
+    text-align: center;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
+    letter-spacing: 3px;
+    animation: pulse 1.5s infinite;
+}
+
+.capture-bar-container {
+    position: relative;
+    margin: 20px 0;
+}
+
+.capture-bar {
+    width: 100%;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.capture-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff0000, #ff6600);
+    border-radius: 18px;
+    transition: width 0.1s linear;
+    width: 0%;
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+    position: relative;
+    overflow: hidden;
+}
+
+.capture-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: shimmer 1.5s infinite;
+}
+
+.capture-bar-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(255, 0, 0, 0.4),
+        transparent
+    );
+    animation: glow 2s infinite;
+}
+
+.capture-percentage {
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-top: 10px;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.capture-hint {
+    text-align: center;
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 15px;
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INTERFACE DE RÉSULTAT DE ROUND
+   ═══════════════════════════════════════════════════════════════ */
+
+#round-result-ui {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: scaleIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.result-container {
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.9), rgba(20, 20, 20, 0.9));
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 50px 80px;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+    min-width: 600px;
+    text-align: center;
+}
+
+.result-round {
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+}
+
+.result-title {
+    font-size: 72px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-shadow: 0 0 30px currentColor;
+    letter-spacing: 5px;
+    animation: titlePulse 1s infinite;
+}
+
+.result-title.victory {
+    color: #00ff00;
+    text-shadow: 0 0 30px #00ff00, 0 0 60px #00ff00;
+}
+
+.result-title.defeat {
+    color: #ff0000;
+    text-shadow: 0 0 30px #ff0000, 0 0 60px #ff0000;
+}
+
+.result-reason {
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 30px;
+    font-style: italic;
+}
+
+.result-score-container {
+    margin-top: 30px;
+}
+
+.result-score {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.score-label {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 2px;
+}
+
+.score-value {
+    font-size: 48px;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INTERFACE DE FIN DE PARTIE
+   ═══════════════════════════════════════════════════════════════ */
+
+#game-end-ui {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: scaleIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.game-end-container {
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(30, 30, 30, 0.95));
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 25px;
+    padding: 60px 100px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 0 80px rgba(0, 0, 0, 0.9);
+    min-width: 700px;
+    text-align: center;
+}
+
+.game-end-title {
+    font-size: 96px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-shadow: 0 0 40px currentColor;
+    letter-spacing: 8px;
+    animation: titlePulse 1.5s infinite;
+}
+
+.game-end-title.victory {
+    color: #00ff00;
+    text-shadow: 0 0 40px #00ff00, 0 0 80px #00ff00;
+}
+
+.game-end-title.defeat {
+    color: #ff0000;
+    text-shadow: 0 0 40px #ff0000, 0 0 80px #ff0000;
+}
+
+.game-end-title.draw {
+    color: #ffaa00;
+    text-shadow: 0 0 40px #ffaa00, 0 0 80px #ffaa00;
+}
+
+.game-end-subtitle {
+    font-size: 28px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 40px;
+}
+
+.game-end-score-container {
+    margin: 40px 0;
+}
+
+.game-end-final-score {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.final-score-label {
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 3px;
+}
+
+.final-score-value {
+    font-size: 64px;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.8);
+}
+
+.game-end-message {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 30px;
+    font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════════ */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes titlePulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+@keyframes glow {
+    0%, 100% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+/* Animation de sortie */
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-in-out forwards;
+}
