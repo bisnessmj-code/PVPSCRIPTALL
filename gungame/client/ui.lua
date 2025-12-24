@@ -8,7 +8,7 @@
 local isUIVisible = false
 
 RegisterNUICallback('uiReady', function(data, cb)
-    Config.Log('debug', 'NUI prête')
+    Logger.Debug('UI', 'NUI prête')
     cb({ success = true })
 end)
 

@@ -1,7 +1,7 @@
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                        SERVER - GAME.LUA                                   ║
-    ║                    Gestion avancée de la partie                            ║
+    ║           Optimisé : Logging centralisé, gestion de partie                ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
 
@@ -37,12 +37,12 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 function OnPlayerKill(killer, victim)
     GameStats.totalKills = GameStats.totalKills + 1
-    Config.Log('debug', '%s a éliminé %s', killer.name, victim.name)
+    Logger.Debug('GAME', '%s a éliminé %s', killer.name, victim.name)
 end
 
 function OnWeaponChange(player, newWeaponIndex)
     local weaponData = Config.GetWeapon(newWeaponIndex)
-    Config.Log('debug', '%s passe à %s (%d/40)', player.name, weaponData and weaponData.label or 'Unknown', newWeaponIndex)
+    Logger.Debug('GAME', '%s passe à %s (%d/40)', player.name, weaponData and weaponData.label or 'Unknown', newWeaponIndex)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════

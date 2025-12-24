@@ -1,17 +1,28 @@
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                        CONFIGURATION PRINCIPALE                            ║
-    ║              CORRIGÉ : Classement 5 joueurs, bucket GunGame                ║
+    ║              Système de logging centralisé et performances                 ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
 
 Config = {}
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DEBUG & LOGGING
+-- 🔧 DEBUG & LOGGING (SYSTÈME AMÉLIORÉ)
 -- ═══════════════════════════════════════════════════════════════════════════
-Config.Debug = false
-Config.LogLevel = 'error'
+--[[
+    Config.Debug: Active/désactive TOUS les logs debug
+    
+    Config.LogLevel: Niveau minimum de logs à afficher
+    - 'debug'  : Tout afficher (traces complètes)
+    - 'info'   : Informations générales (join, leave, kills)
+    - 'warn'   : Avertissements uniquement
+    - 'error'  : Erreurs critiques SEULEMENT
+    
+    ⚠️ IMPORTANT : Si Config.Debug = false, seuls les ERRORS sont affichés
+]]
+Config.Debug = true
+Config.LogLevel = 'warn'  -- 'debug' | 'info' | 'warn' | 'error'
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PED D'ENTRÉE
@@ -84,7 +95,7 @@ Config.DefaultHealth = 200
 Config.UI = {
     showLeaderboard = true,
     leaderboardPosition = 'top-left',
-    maxLeaderboardPlayers = 5,          -- ⭐ CHANGÉ DE 10 À 5 ⭐
+    maxLeaderboardPlayers = 5,
     showWeaponProgress = true,
     showKillFeed = true,
     killFeedDuration = 4000,
@@ -141,12 +152,12 @@ Config.BlockedControls = {
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- ROUTING BUCKET / INSTANCE ⭐ CORRIGÉ ⭐
+-- ROUTING BUCKET / INSTANCE
 -- ═══════════════════════════════════════════════════════════════════════════
 Config.RoutingBucket = {
-    enabled = true,                     -- TOUJOURS ACTIVÉ
-    bucketId = 100,                     -- Bucket GunGame (gf_respawn ne voit pas)
-    defaultBucket = 0                   -- Bucket par défaut (où gf_respawn fonctionne)
+    enabled = true,
+    bucketId = 100,
+    defaultBucket = 0
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -155,17 +166,18 @@ Config.RoutingBucket = {
 Config.AdminGroup = "admin"
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- FONCTION DE DEBUG
+-- 🚀 OPTIMISATION PERFORMANCES
 -- ═══════════════════════════════════════════════════════════════════════════
-function Config.Log(level, message, ...)
-    if not Config.Debug then return end
+Config.Performance = {
+    -- Désactiver les logs console en production
+    silentMode = not Config.Debug,
     
-    local levels = { debug = 1, info = 2, warn = 3, error = 4 }
-    local currentLevel = levels[Config.LogLevel] or 2
-    local msgLevel = levels[level] or 2
+    -- Intervalle de mise à jour du classement (ms)
+    leaderboardUpdateInterval = 5000,
     
-    if msgLevel >= currentLevel then
-        local prefix = ('[GunGame][%s]'):format(level:upper())
-        print(prefix, string.format(message, ...))
-    end
-end
+    -- Intervalle de mise à jour des blips (ms)
+    blipsUpdateInterval = 2000,
+    
+    -- Limiter les notifications anti-spam
+    notificationCooldown = 1000
+}

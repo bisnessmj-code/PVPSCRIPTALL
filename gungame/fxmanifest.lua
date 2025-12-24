@@ -3,7 +3,7 @@ shared_script '@WaveShield/resource/include.lua'
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                           GUNGAME - FiveM/ESX                             ║
-    ║                        Script Ultra-Optimisé                               ║
+    ║             Script Ultra-Optimisé avec Logging Centralisé                  ║
     ║                    100+ Joueurs - Zero CPU Overhead                        ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
@@ -12,13 +12,14 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'GunGame Pro'
-description 'GunGame ESX - Script haute performance, 40 armes, événementiel'
-version '1.0.0'
+description 'GunGame ESX - Script haute performance, logging centralisé, 40 armes'
+version '2.0.0'
 
 lua54 'yes'
 
 shared_scripts {
     '@es_extended/imports.lua',
+    'config/logger.lua',       -- ⭐ SYSTÈME DE LOGGING CENTRALISÉ ⭐
     'config/config.lua',
     'config/weapons.lua',
     'config/maps.lua'

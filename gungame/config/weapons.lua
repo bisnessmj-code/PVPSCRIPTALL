@@ -24,12 +24,12 @@ Config.Weapons = {
     [13] = { name = "WEAPON_MACHINEPISTOL",     label = "Machine Pistol",     category = "smg" },
     [14] = { name = "WEAPON_SMG",               label = "SMG",                category = "smg" },
     [15] = { name = "WEAPON_SMG_MK2",           label = "SMG MK2",            category = "smg" },
-    [16] = { name = "WEAPON_ASSAULTSMG",        label = "Assault SMG",        category = "smg" },
+    [16] = { name = "WEAPON_MILITARYRIFLE",        label = "Machine Pistol",        category = "rifle" },
     [17] = { name = "WEAPON_COMBATPDW",         label = "Combat PDW",         category = "smg" },
     [18] = { name = "WEAPON_GUSENBERG",         label = "Gusenberg Sweeper",  category = "smg" },
     
     -- FUSILS D'ASSAUT (19-28)
-    [19] = { name = "WEAPON_COMPACTRIFLE",      label = "Compact Rifle",      category = "rifle" },
+    [19] = { name = "WEAPON_TACTICALRIFLE",      label = "Compact Rifle",      category = "rifle" },
     [20] = { name = "WEAPON_ASSAULTRIFLE",      label = "Assault Rifle",      category = "rifle" },
     [21] = { name = "WEAPON_ASSAULTRIFLE_MK2",  label = "Assault Rifle MK2",  category = "rifle" },
     [22] = { name = "WEAPON_CARBINERIFLE",      label = "Carbine Rifle",      category = "rifle" },

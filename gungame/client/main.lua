@@ -1,7 +1,7 @@
 --[[
     ╔═══════════════════════════════════════════════════════════════════════════╗
     ║                        CLIENT - MAIN.LUA                                   ║
-    ║     ✅ ULTRA-CORRIGÉ : BLOCAGE TOTAL QS-INVENTORY (TAB + & é " ' ()       ║
+    ║           Optimisé : Logging centralisé, zéro spam console                ║
     ╚═══════════════════════════════════════════════════════════════════════════╝
 ]]
 
@@ -19,7 +19,8 @@ local cachedData = {
     isDead = false,
     lastDeathCheck = 0,
     isRespawning = false,
-    weaponGiven = false
+    weaponGiven = false,
+    lastWeaponWarning = 0
 }
 
 local ESX = exports['es_extended']:getSharedObject()
@@ -36,8 +37,7 @@ CreateThread(function()
     CreateJoinPed()
     CreateJoinBlip()
     
-    print('^2[GunGame][CLIENT]^7 Initialisé avec succès')
-    print('^2[GunGame][CLIENT]^7 Zone de combat: Rayon ' .. Config.MapRadius .. 'm')
+    Logger.Info('CLIENT', 'Système initialisé')
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -64,7 +64,7 @@ function CreateJoinPed()
     end
     
     SetModelAsNoLongerNeeded(model)
-    print('^2[GunGame][CLIENT]^7 PED d\'entrée créé')
+    Logger.Debug('CLIENT', 'PED d\'entrée créé')
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -86,7 +86,7 @@ function CreateJoinBlip()
     AddTextComponentString(blipConfig.name)
     EndTextCommandSetBlipName(cachedData.joinBlip)
     
-    print('^2[GunGame][CLIENT]^7 Blip créé')
+    Logger.Debug('CLIENT', 'Blip créé')
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -163,11 +163,11 @@ CreateThread(function()
                         
                         if currentTime - lastJoinRequest > 2000 then
                             lastJoinRequest = currentTime
-                            print('^2[GunGame][CLIENT]^7 Demande de rejoindre envoyée au serveur')
+                            Logger.Debug('CLIENT', 'Demande de rejoindre envoyée')
                             TriggerServerEvent('gungame:server:requestJoin')
                             Wait(2000)
                         else
-                            print('^3[GunGame][CLIENT]^7 Cooldown actif - Patientez...')
+                            Logger.Debug('CLIENT', 'Cooldown actif')
                         end
                     end
                 end
@@ -194,6 +194,7 @@ CreateThread(function()
                 local coords = GetEntityCoords(ped)
                 local inZone = Config.IsInCombatZone(coords)
                 
+                -- Log périodique (toutes les 10 secondes en mode debug)
                 local currentTime = GetGameTimer()
                 if currentTime - lastWarning > 10000 then
                     local map = Config.GetActiveMap()
@@ -201,15 +202,13 @@ CreateThread(function()
                         local dx = coords.x - map.center.x
                         local dy = coords.y - map.center.y
                         local distance = math.sqrt(dx * dx + dy * dy)
-                        print('^6[GunGame][CLIENT][ZONE CHECK]^7 Distance: ' .. string.format("%.1f", distance) .. 'm / ' .. map.radius .. 'm - Dans zone: ' .. tostring(inZone))
+                        Logger.Debug('ZONE', 'Distance: %.1fm / %dm - Dans zone: %s', distance, map.radius, tostring(inZone))
                     end
                     lastWarning = currentTime
                 end
                 
                 if not inZone then
-                    print('^1[GunGame][CLIENT][ZONE]^7 ⚠️ SORTIE DE ZONE !')
-                    print('^1[GunGame][CLIENT][ZONE]^7 Position: ' .. coords.x .. ', ' .. coords.y .. ', ' .. coords.z)
-                    
+                    Logger.Warn('ZONE', 'Sortie de zone détectée')
                     SetEntityHealth(ped, 0)
                     ShowNotification('~r~Tu es sorti de la zone de combat !')
                     Wait(2000)
@@ -222,37 +221,30 @@ CreateThread(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⭐ THREAD : BLOCAGE ULTRA-COMPLET QS-INVENTORY (TAB + RACCOURCIS 1-9) ⭐
+-- THREAD : BLOCAGE ULTRA-COMPLET QS-INVENTORY
 -- ═══════════════════════════════════════════════════════════════════════════
 CreateThread(function()
     while true do
-        Wait(0) -- ⭐ CRITIQUE : Wait(0) pour bloquer en temps réel ⭐
+        Wait(0)
         
         if cachedData.isInGame then
             local ped = PlayerPedId()
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE ABSOLU TAB (INVENTAIRE QS-INVENTORY) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 37, true)    -- TAB principal
-            DisableControlAction(1, 37, true)    -- TAB (contexte alternatif)
-            DisableControlAction(2, 37, true)    -- TAB (frontend)
+            -- Blocage TAB
+            DisableControlAction(0, 37, true)
+            DisableControlAction(1, 37, true)
+            DisableControlAction(2, 37, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE COMPLET RACCOURCIS 1-9 (& é " ' ( - è _ ç) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            -- Contexte principal (0)
-            DisableControlAction(0, 157, true)   -- 1 (&)
-            DisableControlAction(0, 158, true)   -- 2 (é)
-            DisableControlAction(0, 160, true)   -- 3 (")
-            DisableControlAction(0, 164, true)   -- 4 (')
-            DisableControlAction(0, 165, true)   -- 5 (()
-            DisableControlAction(0, 159, true)   -- 6 (-)
-            DisableControlAction(0, 161, true)   -- 7 (è)
-            DisableControlAction(0, 162, true)   -- 8 (_)
-            DisableControlAction(0, 163, true)   -- 9 (ç)
-            
-            -- Contexte alternatif (1)
+            -- Blocage raccourcis 1-9
+            DisableControlAction(0, 157, true)
+            DisableControlAction(0, 158, true)
+            DisableControlAction(0, 160, true)
+            DisableControlAction(0, 164, true)
+            DisableControlAction(0, 165, true)
+            DisableControlAction(0, 159, true)
+            DisableControlAction(0, 161, true)
+            DisableControlAction(0, 162, true)
+            DisableControlAction(0, 163, true)
             DisableControlAction(1, 157, true)
             DisableControlAction(1, 158, true)
             DisableControlAction(1, 160, true)
@@ -263,84 +255,68 @@ CreateThread(function()
             DisableControlAction(1, 162, true)
             DisableControlAction(1, 163, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE SCROLL MOLETTE (CHANGEMENT D'ARME) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 14, true)    -- Scroll down
-            DisableControlAction(0, 15, true)    -- Scroll up
-            DisableControlAction(0, 16, true)    -- Scroll wheel press
-            DisableControlAction(0, 17, true)    -- Scroll wheel
+            -- Blocage scroll
+            DisableControlAction(0, 14, true)
+            DisableControlAction(0, 15, true)
+            DisableControlAction(0, 16, true)
+            DisableControlAction(0, 17, true)
             DisableControlAction(1, 14, true)
             DisableControlAction(1, 15, true)
             DisableControlAction(1, 16, true)
             DisableControlAction(1, 17, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE TOUCHES INVENTAIRE (I, F3, etc.) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 289, true)   -- I (inventaire standard)
-            DisableControlAction(0, 170, true)   -- F3 (inventaire alternatif)
+            -- Blocage inventaire
+            DisableControlAction(0, 289, true)
+            DisableControlAction(0, 170, true)
             DisableControlAction(1, 289, true)
             DisableControlAction(1, 170, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ BLOCAGE X (ROUE D'ARMES NATIVE GTA) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 99, true)    -- X (INPUT_VEH_SELECT_NEXT_WEAPON)
-            DisableControlAction(0, 115, true)   -- X (alternative)
+            -- Blocage roue d'armes
+            DisableControlAction(0, 99, true)
+            DisableControlAction(0, 115, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ EMPÊCHER L'OUVERTURE DES MENUS (M, F1, etc.) ⭐
-            -- ═══════════════════════════════════════════════════════════════
-            DisableControlAction(0, 244, true)   -- M (map)
-            DisableControlAction(0, 288, true)   -- F1 (phone/menu)
+            -- Blocage menus
+            DisableControlAction(0, 244, true)
+            DisableControlAction(0, 288, true)
             
-            -- ═══════════════════════════════════════════════════════════════
-            -- ⭐ FORCER L'ARME GUNGAME (SÉCURITÉ ABSOLUE) ⭐
-            -- ═══════════════════════════════════════════════════════════════
+            -- Forcer l'arme GunGame
             if not cachedData.isRespawning then
                 local currentWeapon = GetSelectedPedWeapon(ped)
                 local expectedWeapon = Config.GetWeaponHash(cachedData.currentWeaponIndex)
                 
-                -- Vérifier si le joueur a changé d'arme
                 if currentWeapon ~= expectedWeapon and expectedWeapon ~= 0 then
-                    -- FORCER le retour à l'arme GunGame
                     SetCurrentPedWeapon(ped, expectedWeapon, true)
                     
-                    -- Notification visuelle (limité à 1 par seconde)
                     if not cachedData.lastWeaponWarning or GetGameTimer() - cachedData.lastWeaponWarning > 1000 then
                         ShowNotification('~r~Tu ne peux utiliser que l\'arme GunGame !')
                         cachedData.lastWeaponWarning = GetGameTimer()
-                        print('^1[GunGame][CLIENT][ANTI-WEAPON]^7 Arme forcée: ' .. expectedWeapon)
+                        Logger.Debug('ANTI-WEAPON', 'Arme forcée: %d', expectedWeapon)
                     end
                 end
             end
             
-            -- DÉSACTIVER LE RESPAWN ESX/GF_RESPAWN
             SetPlayerInvincible(PlayerId(), false)
         else
-            Wait(500) -- ⭐ En dehors du jeu, on attend plus longtemps ⭐
+            Wait(500)
         end
     end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⭐ THREAD SUPPLÉMENTAIRE : NETTOYAGE PÉRIODIQUE DES ARMES ⭐
+-- THREAD : NETTOYAGE PÉRIODIQUE DES ARMES
 -- ═══════════════════════════════════════════════════════════════════════════
 CreateThread(function()
     while true do
-        Wait(500) -- Vérification toutes les 500ms
+        Wait(500)
         
         if cachedData.isInGame and not cachedData.isRespawning then
             local ped = PlayerPedId()
             local expectedWeapon = Config.GetWeaponHash(cachedData.currentWeaponIndex)
             
             if expectedWeapon and expectedWeapon ~= 0 then
-                -- Compter le nombre d'armes que le joueur possède
                 local weaponCount = 0
                 local hasExpectedWeapon = false
                 
-                -- Vérifier les armes du joueur
                 for _, weapon in ipairs(Config.Weapons) do
                     local weaponHash = GetHashKey(weapon.name)
                     if HasPedGotWeapon(ped, weaponHash, false) then
@@ -351,23 +327,18 @@ CreateThread(function()
                     end
                 end
                 
-                -- Si le joueur a plus d'une arme OU n'a pas l'arme attendue
                 if weaponCount > 1 or not hasExpectedWeapon then
-                    print('^1[GunGame][CLIENT][ANTI-INVENTORY]^7 ⚠️ Détection d\'armes multiples ou manquantes')
-                    print('^1[GunGame][CLIENT][ANTI-INVENTORY]^7 Armes détectées: ' .. weaponCount .. ', A l\'arme attendue: ' .. tostring(hasExpectedWeapon))
+                    Logger.Debug('ANTI-INVENTORY', 'Armes multiples détectées: %d', weaponCount)
                     
-                    -- NETTOYAGE TOTAL
                     RemoveAllPedWeapons(ped, true)
                     Wait(100)
                     
-                    -- REDONNER L'ARME GUNGAME
                     GiveWeaponToPed(ped, expectedWeapon, Config.DefaultAmmo, false, true)
                     SetPedAmmo(ped, expectedWeapon, Config.DefaultAmmo)
                     SetAmmoInClip(ped, expectedWeapon, GetMaxAmmoInClip(ped, expectedWeapon, true))
                     SetCurrentPedWeapon(ped, expectedWeapon, true)
                     
                     ShowNotification('~r~Armes non autorisées supprimées !')
-                    print('^2[GunGame][CLIENT][ANTI-INVENTORY]^7 ✅ Arme GunGame restaurée')
                 end
             end
         end
@@ -375,7 +346,7 @@ CreateThread(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- THREAD : DÉTECTION DE MORT AMÉLIORÉE
+-- THREAD : DÉTECTION DE MORT
 -- ═══════════════════════════════════════════════════════════════════════════
 CreateThread(function()
     while true do
@@ -385,9 +356,7 @@ CreateThread(function()
             local ped = PlayerPedId()
             local currentTime = GetGameTimer()
             
-            -- Vérifier si le joueur vient de mourir
             if IsEntityDead(ped) and not cachedData.isDead then
-                -- Anti-spam: minimum 2 secondes entre chaque mort
                 if currentTime - cachedData.lastDeathCheck < 2000 then
                     goto continue
                 end
@@ -395,7 +364,6 @@ CreateThread(function()
                 cachedData.lastDeathCheck = currentTime
                 cachedData.isDead = true
                 
-                -- Récupérer le tueur
                 local killer = GetPedSourceOfDeath(ped)
                 local killerServerId = 0
                 
@@ -405,21 +373,17 @@ CreateThread(function()
                 
                 local weaponHash = GetPedCauseOfDeath(ped)
                 
-                print('^3[GunGame][CLIENT][DEATH]^7 Mort détectée - Tueur ID: ' .. killerServerId .. ' - Arme: ' .. weaponHash)
+                Logger.Debug('DEATH', 'Mort détectée - Tueur: %d', killerServerId)
                 
-                -- Vérifier si dans la zone
                 local coords = GetEntityCoords(ped)
                 local inZone = Config.IsInCombatZone(coords)
                 
                 if inZone then
-                    -- Notifier le serveur IMMÉDIATEMENT
                     TriggerServerEvent('gungame:server:playerDied', killerServerId, weaponHash)
-                    print('^2[GunGame][CLIENT][DEATH]^7 Notification serveur envoyée')
                 else
-                    print('^1[GunGame][CLIENT][DEATH]^7 Mort hors zone - Ne pas notifier')
+                    Logger.Debug('DEATH', 'Mort hors zone - Ignorée')
                 end
                 
-                -- Respawn après un court délai
                 Wait(1000)
                 DoRespawn()
             elseif not IsEntityDead(ped) then
@@ -440,12 +404,12 @@ function DoRespawn()
     local respawn = Config.GetRandomRespawn()
     
     if not respawn then
-        print('^1[GunGame][CLIENT][ERROR]^7 Aucun point de respawn trouvé !')
+        Logger.Error('RESPAWN', 'Aucun point de respawn trouvé')
         cachedData.isRespawning = false
         return
     end
     
-    print('^6[GunGame][CLIENT][RESPAWN]^7 Point choisi: ' .. respawn.x .. ', ' .. respawn.y .. ', ' .. respawn.z)
+    Logger.Debug('RESPAWN', 'Point choisi: %.1f, %.1f, %.1f', respawn.x, respawn.y, respawn.z)
     
     if Config.RespawnDelay > 0 then
         Wait(Config.RespawnDelay)
@@ -453,60 +417,47 @@ function DoRespawn()
     
     local ped = PlayerPedId()
     
-    -- DÉSACTIVER TOUS LES SYSTÈMES DE RESPAWN EXTERNES
     TriggerEvent('esx_ambulancejob:setDeathStatus', false)
     
-    -- FADE OUT POUR MASQUER LA TÉLÉPORTATION
     DoScreenFadeOut(250)
     Wait(300)
     
-    -- Résurrection
     NetworkResurrectLocalPlayer(respawn.x, respawn.y, respawn.z, respawn.w, true, false)
     
     Wait(200)
     ped = PlayerPedId()
     
-    -- Forcer la téléportation
     SetEntityCoords(ped, respawn.x, respawn.y, respawn.z, false, false, false, false)
     SetEntityHeading(ped, respawn.w)
     
-    -- RENDRE INVINCIBLE TEMPORAIREMENT (évite les animations de mort)
     SetEntityInvincible(ped, true)
     
     Wait(100)
     
-    -- Vérifier position
     local finalCoords = GetEntityCoords(ped)
     local inZone = Config.IsInCombatZone(finalCoords)
     
-    print('^6[GunGame][CLIENT][RESPAWN]^7 Position finale: ' .. finalCoords.x .. ', ' .. finalCoords.y .. ', ' .. finalCoords.z)
-    print('^6[GunGame][CLIENT][RESPAWN]^7 Dans la zone: ' .. tostring(inZone))
-    
     if not inZone then
-        print('^1[GunGame][CLIENT][RESPAWN ERROR]^7 HORS ZONE ! Retéléportation...')
+        Logger.Warn('RESPAWN', 'Hors zone après respawn - Retéléportation')
         SetEntityCoords(ped, respawn.x, respawn.y, respawn.z, false, false, false, false)
         Wait(100)
     end
     
-    -- Configurer le joueur
     SetEntityHealth(ped, Config.DefaultHealth)
     SetPedArmour(ped, Config.DefaultArmor)
     ClearPedBloodDamage(ped)
     
-    -- ENLEVER INVINCIBILITÉ APRÈS CONFIGURATION
     Wait(100)
     SetEntityInvincible(ped, false)
     
-    -- REDONNER L'ARME AVEC MUNITIONS COMPLÈTES
     GiveCurrentWeapon()
     
-    -- FADE IN APRÈS SPAWN COMPLET
     DoScreenFadeIn(250)
     
     cachedData.isDead = false
     cachedData.isRespawning = false
     
-    print('^2[GunGame][CLIENT][RESPAWN]^7 Respawn terminé')
+    Logger.Debug('RESPAWN', 'Respawn terminé')
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -524,15 +475,11 @@ RegisterNetEvent('gungame:client:joinGame', function(weaponIndex)
     local ped = PlayerPedId()
     cachedData.playerPed = ped
     
-    print('^2[GunGame][CLIENT]^7 Rejoindre la partie - Arme initiale: ' .. weaponIndex)
+    Logger.Info('CLIENT', 'Rejoindre la partie - Arme: %d', weaponIndex)
     
-    -- DÉSACTIVER le respawn ESX/GF_RESPAWN
     TriggerEvent('esx_ambulancejob:setDeathStatus', false)
     
-    -- Téléportation au spawn
     local respawn = Config.GetRandomRespawn()
-    
-    print('^2[GunGame][CLIENT][JOIN]^7 Point de spawn: ' .. respawn.x .. ', ' .. respawn.y .. ', ' .. respawn.z)
     
     DoScreenFadeOut(250)
     Wait(300)
@@ -540,33 +487,26 @@ RegisterNetEvent('gungame:client:joinGame', function(weaponIndex)
     SetEntityCoords(ped, respawn.x, respawn.y, respawn.z, false, false, false, false)
     SetEntityHeading(ped, respawn.w)
     
-    -- INVINCIBLE TEMPORAIREMENT PENDANT LE SPAWN INITIAL
     SetEntityInvincible(ped, true)
     
     Wait(200)
     
-    local finalCoords = GetEntityCoords(ped)
-    print('^2[GunGame][CLIENT][JOIN]^7 Position finale: ' .. finalCoords.x .. ', ' .. finalCoords.y .. ', ' .. finalCoords.z)
-    
     SetupPlayerForGame()
     
-    -- ATTENDRE UN PEU PLUS LONGTEMPS AVANT DE DONNER L'ARME
     Wait(500)
     
     GiveCurrentWeapon()
     
-    -- VÉRIFICATION MULTIPLE QUE L'ARME EST BIEN ÉQUIPÉE
     Wait(200)
     local currentWeapon = GetSelectedPedWeapon(ped)
     local expectedWeapon = Config.GetWeaponHash(cachedData.currentWeaponIndex)
     
     if currentWeapon ~= expectedWeapon then
-        print('^3[GunGame][CLIENT][JOIN]^7 ⚠️ Arme pas équipée, retry...')
+        Logger.Debug('JOIN', 'Arme non équipée, retry')
         GiveCurrentWeapon()
         Wait(200)
     end
     
-    -- ENLEVER INVINCIBILITÉ
     SetEntityInvincible(ped, false)
     
     DoScreenFadeIn(250)
@@ -584,12 +524,10 @@ RegisterNetEvent('gungame:client:joinGame', function(weaponIndex)
         totalWeapons = Config.TotalWeapons,
         killsNeeded = Config.KillsPerWeaponChange
     })
-    
-    print('^2[GunGame][CLIENT]^7 UI activée')
 end)
 
 RegisterNetEvent('gungame:client:leaveGame', function()
-    print('^3[GunGame][CLIENT]^7 Quitter la partie')
+    Logger.Info('CLIENT', 'Quitter la partie')
     
     cachedData.isInGame = false
     cachedData.currentWeaponIndex = 1
@@ -600,17 +538,14 @@ RegisterNetEvent('gungame:client:leaveGame', function()
     
     local ped = PlayerPedId()
     
-    -- Fade out pour transition fluide
     DoScreenFadeOut(250)
     Wait(300)
     
     local exitCoords = Config.EndTeleport
     SetEntityCoords(ped, exitCoords.x, exitCoords.y, exitCoords.z, false, false, false, false)
     SetEntityHeading(ped, exitCoords.w)
-    
     RemoveAllPedWeapons(ped, true)
     
-    -- Restaurer l'état normal
     SetEntityInvincible(ped, false)
     SetEntityHealth(ped, 200)
     
@@ -629,11 +564,10 @@ RegisterNetEvent('gungame:client:updateProgress', function(weaponIndex, kills)
     cachedData.currentWeaponIndex = weaponIndex
     cachedData.currentKills = kills
     
-    print('^5[GunGame][CLIENT][PROGRESS]^7 Arme: ' .. weaponIndex .. '/40, Kills: ' .. kills .. '/' .. Config.KillsPerWeaponChange)
+    Logger.Debug('PROGRESS', 'Arme: %d/40, Kills: %d/%d', weaponIndex, kills, Config.KillsPerWeaponChange)
     
-    -- Changement d'arme ?
     if weaponIndex ~= previousWeapon then
-        print('^2[GunGame][CLIENT][WEAPON CHANGE]^7 ' .. previousWeapon .. ' → ' .. weaponIndex)
+        Logger.Info('WEAPON_CHANGE', '%d → %d', previousWeapon, weaponIndex)
         GiveCurrentWeapon()
         local weaponData = Config.GetWeapon(weaponIndex)
         if weaponData then
@@ -641,7 +575,6 @@ RegisterNetEvent('gungame:client:updateProgress', function(weaponIndex, kills)
         end
     end
     
-    -- Mise à jour UI
     local weaponData = Config.GetWeapon(weaponIndex)
     SendNUIMessage({
         action = 'updateProgress',
@@ -655,17 +588,17 @@ RegisterNetEvent('gungame:client:updateProgress', function(weaponIndex, kills)
 end)
 
 RegisterNetEvent('gungame:client:killConfirm', function(kills, neededKills)
-    print('^2[GunGame][CLIENT][KILL]^7 Kill confirmé ! (' .. kills .. '/' .. neededKills .. ')')
+    Logger.Debug('KILL', 'Kill confirmé (%d/%d)', kills, neededKills)
     ShowNotification(string.format(Config.Messages.killConfirm, kills, neededKills))
 end)
 
 RegisterNetEvent('gungame:client:playerKilled', function(killerName)
-    print('^1[GunGame][CLIENT][DEATH]^7 Tué par ' .. killerName)
+    Logger.Debug('DEATH', 'Tué par %s', killerName)
     ShowNotification(string.format(Config.Messages.playerKilled, killerName))
 end)
 
 RegisterNetEvent('gungame:client:updateLeaderboard', function(leaderboard)
-    print('^5[GunGame][CLIENT][LEADERBOARD]^7 Classement reçu: ' .. #leaderboard .. ' joueurs')
+    Logger.Debug('LEADERBOARD', 'Classement reçu: %d joueurs', #leaderboard)
     
     SendNUIMessage({
         action = 'updateLeaderboard',
@@ -695,7 +628,7 @@ RegisterNetEvent('gungame:client:gameEnd', function(winner, top3)
     cachedData.isRespawning = false
     cachedData.weaponGiven = false
     
-    print('^2[GunGame][CLIENT][END]^7 Partie terminée - Vainqueur: ' .. winner)
+    Logger.Info('END', 'Partie terminée - Vainqueur: %s', winner)
     
     SendNUIMessage({
         action = 'showEndScreen',
@@ -784,8 +717,7 @@ function SetupPlayerForGame()
     SetPedCanRagdoll(ped, false)
     ClearPedBloodDamage(ped)
     
-    print('^2[GunGame][CLIENT]^7 Joueur configuré - Santé: ' .. Config.DefaultHealth .. ', Armure: ' .. Config.DefaultArmor)
-    print('^2[GunGame][CLIENT]^7 Inventaire vidé')
+    Logger.Debug('SETUP', 'Joueur configuré - Santé: %d, Armure: %d', Config.DefaultHealth, Config.DefaultArmor)
 end
 
 function GiveCurrentWeapon()
@@ -793,7 +725,7 @@ function GiveCurrentWeapon()
     local weaponData = Config.GetWeapon(cachedData.currentWeaponIndex)
     
     if not weaponData then
-        print('^1[GunGame][CLIENT][ERROR]^7 Arme invalide à l\'index ' .. cachedData.currentWeaponIndex)
+        Logger.Error('WEAPON', 'Arme invalide à l\'index %d', cachedData.currentWeaponIndex)
         return
     end
     
@@ -801,33 +733,24 @@ function GiveCurrentWeapon()
     
     local weaponHash = GetHashKey(weaponData.name)
     
-    -- DONNER L'ARME AVEC MUNITIONS COMPLÈTES
     GiveWeaponToPed(ped, weaponHash, Config.DefaultAmmo, false, true)
-    
-    -- FORCER LES MUNITIONS AU MAXIMUM
     SetPedAmmo(ped, weaponHash, Config.DefaultAmmo)
     SetAmmoInClip(ped, weaponHash, GetMaxAmmoInClip(ped, weaponHash, true))
-    
-    -- METTRE L'ARME DANS LES MAINS IMMÉDIATEMENT
     SetCurrentPedWeapon(ped, weaponHash, true)
     
-    -- ATTENDRE UN PEU PUIS FORCER À NOUVEAU (GARANTIE MAXIMALE)
     Wait(100)
     SetCurrentPedWeapon(ped, weaponHash, true)
     
-    -- TRIPLE VÉRIFICATION
     Wait(100)
     local currentWeapon = GetSelectedPedWeapon(ped)
     if currentWeapon ~= weaponHash then
-        print('^3[GunGame][CLIENT][WARNING]^7 L\'arme n\'est pas équipée, retry final...')
+        Logger.Warn('WEAPON', 'Arme non équipée, retry final')
         SetCurrentPedWeapon(ped, weaponHash, true)
     else
-        print('^2[GunGame][CLIENT]^7 ✅ Arme équipée: ' .. weaponData.label)
+        Logger.Debug('WEAPON', 'Arme équipée: %s', weaponData.label)
     end
     
     cachedData.weaponGiven = true
-    
-    print('^2[GunGame][CLIENT]^7 Arme donnée: ' .. weaponData.label .. ' (' .. weaponData.name .. ') avec ' .. Config.DefaultAmmo .. ' munitions')
 end
 
 function ShowNotification(message)
@@ -854,7 +777,7 @@ RegisterCommand('quitgungame', function()
         return
     end
     
-    print('^3[GunGame][CLIENT]^7 Commande /quitgungame utilisée')
+    Logger.Debug('CLIENT', 'Commande /quitgungame utilisée')
     TriggerServerEvent('gungame:server:requestLeave')
 end, false)
 
@@ -874,11 +797,10 @@ AddEventHandler('onResourceStop', function(resourceName)
     
     ClearPlayerBlips()
     
-    -- Restaurer l'état normal du joueur
     local ped = PlayerPedId()
     SetEntityInvincible(ped, false)
     
-    print('^3[GunGame][CLIENT]^7 Resource arrêtée - Nettoyage effectué')
+    Logger.Info('CLIENT', 'Resource arrêtée - Nettoyage effectué')
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
