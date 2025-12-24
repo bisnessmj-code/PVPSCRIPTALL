@@ -1,9 +1,9 @@
 -- ========================================
 -- PVP GUNFIGHT - SYSTÈME ELO SIMPLIFIÉ
--- Version 5.0.0 - Progression Facilitée
+-- Version 5.2.0 - Progression Facilitée + Cache + ANTI-DEADLOCK
 -- ========================================
 
-DebugElo('Module ELO chargé (VERSION SIMPLIFIÉE)')
+DebugElo('Module ELO chargé (VERSION SIMPLIFIÉE + CACHE + ANTI-DEADLOCK)')
 
 -- ========================================
 -- CONFIGURATION ELO SIMPLIFIÉE
@@ -422,50 +422,95 @@ function UpdateGlobalStats(identifier, newElo, newRankId, isWin)
 end
 
 -- ========================================
--- KILLS/DEATHS PAR MODE
+-- ✅ KILLS/DEATHS PAR MODE (ANTI-DEADLOCK)
 -- ========================================
+
+-- ✅ FONCTION OPTIMISÉE: MISE À JOUR KILLS (SANS DEADLOCK)
 function UpdatePlayerKillsByMode(playerId, amount, mode)
     local xPlayer = ESX.GetPlayerFromId(playerId)
     if not xPlayer then return end
     
-    MySQL.update('UPDATE pvp_stats_modes SET kills = kills + ? WHERE identifier = ? AND mode = ?', {amount, xPlayer.identifier, mode})
-    MySQL.update('UPDATE pvp_stats SET kills = kills + ? WHERE identifier = ?', {amount, xPlayer.identifier})
+    -- ✅ UTILISER CreateThread POUR ÉVITER LES DEADLOCKS
+    CreateThread(function()
+        local success = false
+        local attempts = 0
+        local maxAttempts = 3
+        
+        -- Retry en cas de deadlock
+        while not success and attempts < maxAttempts do
+            attempts = attempts + 1
+            
+            -- ✅ UPDATE par mode (avec index composite identifier + mode)
+            MySQL.update('UPDATE pvp_stats_modes SET kills = kills + ? WHERE identifier = ? AND mode = ?', 
+                {amount, xPlayer.identifier, mode}, function(affectedRows)
+                    if affectedRows and affectedRows > 0 then
+                        success = true
+                        DebugElo('✅ Kills mis à jour: %s (+%d) [tentative %d]', mode, amount, attempts)
+                    else
+                        if attempts >= maxAttempts then
+                            DebugError('❌ Échec UPDATE kills après %d tentatives (mode: %s)', maxAttempts, mode)
+                        end
+                    end
+                end)
+            
+            -- Attente progressive en cas d'échec (50ms, 100ms, 150ms)
+            if not success and attempts < maxAttempts then
+                Wait(50 * attempts)
+            end
+        end
+        
+        -- ✅ UPDATE stats globales (requête séparée pour éviter deadlock)
+        Wait(25) -- Petit délai pour éviter collision
+        MySQL.update('UPDATE pvp_stats SET kills = kills + ? WHERE identifier = ?', {amount, xPlayer.identifier})
+    end)
 end
 
+-- ✅ FONCTION OPTIMISÉE: MISE À JOUR DEATHS (SANS DEADLOCK)
 function UpdatePlayerDeathsByMode(playerId, amount, mode)
     local xPlayer = ESX.GetPlayerFromId(playerId)
     if not xPlayer then return end
     
-    MySQL.update('UPDATE pvp_stats_modes SET deaths = deaths + ? WHERE identifier = ? AND mode = ?', {amount, xPlayer.identifier, mode})
-    MySQL.update('UPDATE pvp_stats SET deaths = deaths + ? WHERE identifier = ?', {amount, xPlayer.identifier})
+    -- ✅ UTILISER CreateThread POUR ÉVITER LES DEADLOCKS
+    CreateThread(function()
+        local success = false
+        local attempts = 0
+        local maxAttempts = 3
+        
+        -- Retry en cas de deadlock
+        while not success and attempts < maxAttempts do
+            attempts = attempts + 1
+            
+            -- ✅ UPDATE par mode (avec index composite identifier + mode)
+            MySQL.update('UPDATE pvp_stats_modes SET deaths = deaths + ? WHERE identifier = ? AND mode = ?', 
+                {amount, xPlayer.identifier, mode}, function(affectedRows)
+                    if affectedRows and affectedRows > 0 then
+                        success = true
+                        DebugElo('✅ Deaths mis à jour: %s (+%d) [tentative %d]', mode, amount, attempts)
+                    else
+                        if attempts >= maxAttempts then
+                            DebugError('❌ Échec UPDATE deaths après %d tentatives (mode: %s)', maxAttempts, mode)
+                        end
+                    end
+                end)
+            
+            -- Attente progressive en cas d'échec (50ms, 100ms, 150ms)
+            if not success and attempts < maxAttempts then
+                Wait(50 * attempts)
+            end
+        end
+        
+        -- ✅ UPDATE stats globales (requête séparée pour éviter deadlock)
+        Wait(25) -- Petit délai pour éviter collision
+        MySQL.update('UPDATE pvp_stats SET deaths = deaths + ? WHERE identifier = ?', {amount, xPlayer.identifier})
+    end)
 end
 
 -- ========================================
--- LEADERBOARD
+-- LEADERBOARD OPTIMISÉ (AVEC CACHE)
 -- ========================================
 function GetLeaderboardByMode(mode, limit, callback)
-    limit = limit or 50
-    
-    MySQL.query([[
-        SELECT sm.*, s.name, s.discord_avatar
-        FROM pvp_stats_modes sm
-        LEFT JOIN pvp_stats s ON sm.identifier = s.identifier
-        WHERE sm.mode = ?
-        ORDER BY sm.elo DESC
-        LIMIT ?
-    ]], {mode, limit}, function(results)
-        if results then
-            for i = 1, #results do
-                local player = results[i]
-                player.kills = player.kills or 0
-                player.deaths = player.deaths or 0
-                player.name = player.name or ('Joueur ' .. i)
-                player.avatar = player.discord_avatar or Config.Discord.defaultAvatar
-                player.rank = GetRankByElo(player.elo)
-            end
-        end
-        callback(results or {})
-    end)
+    -- ✅ UTILISER LE CACHE au lieu de requête directe
+    exports['pvp_gunfight']:GetLeaderboardByModeOptimized(mode, limit, callback)
 end
 
 -- ========================================
@@ -495,6 +540,10 @@ exports('InitPlayerModeStats', InitPlayerModeStats)
 exports('UpdatePlayerKillsByMode', UpdatePlayerKillsByMode)
 exports('UpdatePlayerDeathsByMode', UpdatePlayerDeathsByMode)
 
-DebugSuccess('Système ELO initialisé (VERSION 5.0.0 - SIMPLIFIÉ)')
-DebugSuccess('📊 Gains: +%d ELO | Pertes: -%d ELO | Bonus Streak: +%d par victoire', 
-    ELO_CONFIG.baseWinElo, ELO_CONFIG.baseLoseElo, ELO_CONFIG.winStreakBonus)
+DebugSuccess('========================================')
+DebugSuccess('Système ELO initialisé (VERSION 5.2.0)')
+DebugSuccess('✅ SIMPLIFIÉ + CACHE + ANTI-DEADLOCK')
+DebugSuccess('📊 Gains: +%d ELO | Pertes: -%d ELO', ELO_CONFIG.baseWinElo, ELO_CONFIG.baseLoseElo)
+DebugSuccess('🔥 Bonus Streak: +%d par victoire (max: %d)', ELO_CONFIG.winStreakBonus, ELO_CONFIG.maxStreakBonus)
+DebugSuccess('🔒 Anti-Deadlock: Retry x3 + Délais progressifs')
+DebugSuccess('========================================')

@@ -1,17 +1,18 @@
 -- ========================================
 -- PVP GUNFIGHT - SYSTÈME DE DÉGÂTS UNIFIÉ
--- Version 2.2.0 - DÉSACTIVATION CASQUES + SANS ARMURE
+-- Version 2.3.0 - HEADSHOT ONE-SHOT GARANTI
 -- ========================================
 -- ✅ UN SEUL handler gameEventTriggered
--- ✅ Tracking multi-niveaux robuste (headshot_system)
--- ✅ Anti-friendly fire (damage_system)
--- ✅ Headshot one-shot kill garanti
--- ✅ AUCUN "Suicide" erroné
--- ✅ Désactivation protection casques
+-- ✅ Tracking multi-niveaux robuste
+-- ✅ Anti-friendly fire
+-- ✅ Headshot one-shot GARANTI (amélioration)
+-- ✅ Détection multi-bone pour la tête
+-- ✅ Kill instantané avec protection anti-restauration
+-- ✅ Désactivation casques renforcée
 -- ✅ SANS système d'armure
 -- ========================================
 
-DebugClient('Module Damage System chargé (UNIFIÉ v2.2.0 - Sans Armure)')
+DebugClient('Module Damage System chargé (UNIFIÉ v2.3.0 - Headshot Garanti)')
 
 -- ========================================
 -- CACHE DES NATIVES
@@ -25,7 +26,6 @@ local _NetworkGetPlayerIndexFromPed = NetworkGetPlayerIndexFromPed
 local _GetPlayerServerId = GetPlayerServerId
 local _GetEntityHealth = GetEntityHealth
 local _SetEntityHealth = SetEntityHealth
--- ❌ RETIRÉ: _GetPedArmour, _SetPedArmour
 local _GetGameTimer = GetGameTimer
 local _GetPlayerPed = GetPlayerPed
 local _GetPlayerFromServerId = GetPlayerFromServerId
@@ -37,9 +37,11 @@ local _GetPedCauseOfDeath = GetPedCauseOfDeath
 local _SetPedHelmet = SetPedHelmet
 local _SetPedCanLosePropsOnDamage = SetPedCanLosePropsOnDamage
 local _SetPedConfigFlag = SetPedConfigFlag
+local _GetPedLastDamageBone = GetPedLastDamageBone
+local _IsEntityDead = IsEntityDead
 
 -- ========================================
--- CONFIGURATION
+-- CONFIGURATION AMÉLIORÉE
 -- ========================================
 local DAMAGE_CONFIG = {
     -- Dégâts normaux
@@ -54,55 +56,99 @@ local DAMAGE_CONFIG = {
         [GetHashKey('WEAPON_HEAVYPISTOL')] = 1.0,
     },
     
-    -- HEADSHOT CONFIG
+    -- 🆕 HEADSHOT CONFIG AMÉLIORÉE
     headshotEnabled = true,
-    headshotBone = 31086, -- Bone de la tête
-    headshotInstantKill = true, -- Mort instantanée
+    headshotInstantKill = true,
+    
+    -- 🆕 MULTIPLE BONE IDs POUR LA TÊTE (pour être sûr)
+    headshotBones = {
+        31086,  -- SKEL_Head (principal)
+        39317,  -- SKEL_Neck_1
+        0x796E, -- IK_Head (format hex)
+        12844,  -- BONETAG_HEAD
+    },
 }
+
+-- 🆕 ÉTAT ANTI-RESTAURATION HEADSHOT
+local headshotKillInProgress = false
+local lastHeadshotTime = 0
 
 -- ========================================
 -- SYSTÈME DE TRACKING MULTI-NIVEAUX
--- (inspiré de headshot_system pour robustesse)
 -- ========================================
 local recentDamageHistory = {}
-local MAX_DAMAGE_HISTORY = 50 -- Limite FIFO
-local DAMAGE_HISTORY_TIMEOUT = 3000 -- 3 secondes
+local MAX_DAMAGE_HISTORY = 50
+local DAMAGE_HISTORY_TIMEOUT = 3000
 
 local lastKnownAttacker = nil
 local lastKnownWeapon = nil
 local lastAttackerTime = 0
 
--- Cache coéquipiers
 local teammateServerIds = {}
-
--- État système
 local damageSystemActive = false
-local lastHealthCheck = {health = 200, time = 0} -- ❌ RETIRÉ: armour
+local lastHealthCheck = {health = 200, time = 0}
 
 -- ========================================
--- 🆕 FONCTION: DÉSACTIVER PROTECTION CASQUES
+-- 🆕 FONCTION AMÉLIORÉE: VÉRIFIER SI BONE EST TÊTE
+-- ========================================
+local function IsHeadshotBone(bone)
+    if not bone then return false end
+    
+    for i = 1, #DAMAGE_CONFIG.headshotBones do
+        if bone == DAMAGE_CONFIG.headshotBones[i] then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- ========================================
+-- 🆕 FONCTION: KILL INSTANTANÉ GARANTI
+-- ========================================
+local function ForceInstantKill(ped, reason)
+    headshotKillInProgress = true
+    lastHeadshotTime = _GetGameTimer()
+    
+    DebugClient('[HEADSHOT] 💀 KILL INSTANTANÉ FORCÉ - Raison: %s', reason)
+    
+    -- Multi-étapes pour garantir la mort
+    _SetEntityHealth(ped, 0)
+    Wait(0)
+    _SetEntityHealth(ped, 0)
+    Wait(50)
+    
+    -- Vérifier si vraiment mort
+    if not _IsEntityDead(ped) then
+        DebugWarn('[HEADSHOT] ⚠️ PED encore vivant - Force kill #2')
+        _SetEntityHealth(ped, 0)
+        Wait(0)
+        _SetEntityHealth(ped, 0)
+    end
+    
+    -- Laisser 500ms avant de réactiver la restauration
+    CreateThread(function()
+        Wait(500)
+        headshotKillInProgress = false
+        DebugClient('[HEADSHOT] ✅ Protection kill désactivée')
+    end)
+end
+
+-- ========================================
+-- FONCTION: DÉSACTIVER PROTECTION CASQUES
 -- ========================================
 local function DisableHelmetProtection(ped)
-    -- 1. Désactiver la capacité du casque à protéger
     _SetPedHelmet(ped, false)
-    
-    -- 2. Désactiver la perte de props (empêche le casque de tomber)
     _SetPedCanLosePropsOnDamage(ped, false, 0)
-    
-    -- 3. Flag CONFIG: Désactiver l'armure du casque (CRITICAL)
     _SetPedConfigFlag(ped, 438, true) -- CPED_CONFIG_FLAG_DisableHelmetArmor
     
     DebugClient('🎩 Protection casque DÉSACTIVÉE pour ped %d', ped)
 end
 
--- ========================================
--- 🆕 FONCTION: RÉACTIVER PROTECTION CASQUES
--- ========================================
 local function EnableHelmetProtection(ped)
-    -- Réactiver la protection (état vanilla)
     _SetPedHelmet(ped, true)
     _SetPedCanLosePropsOnDamage(ped, true, 0)
-    _SetPedConfigFlag(ped, 438, false) -- Réactiver armure casque
+    _SetPedConfigFlag(ped, 438, false)
     
     DebugClient('🎩 Protection casque RÉACTIVÉE pour ped %d', ped)
 end
@@ -117,19 +163,16 @@ local function RecordDamage(attacker, weapon)
     
     local currentTime = _GetGameTimer()
     
-    -- Ajouter à l'historique (FIFO)
     table.insert(recentDamageHistory, 1, {
         attacker = attacker,
         weapon = weapon,
         time = currentTime
     })
     
-    -- Limiter taille
     if #recentDamageHistory > MAX_DAMAGE_HISTORY then
         table.remove(recentDamageHistory)
     end
     
-    -- Mettre à jour le cache rapide
     lastKnownAttacker = attacker
     lastKnownWeapon = weapon
     lastAttackerTime = currentTime
@@ -155,12 +198,11 @@ end
 
 -- ========================================
 -- FONCTION: RÉCUPÉRER LE MEILLEUR ATTAQUANT
--- (Système à 3 niveaux de priorité)
 -- ========================================
 local function GetBestAttacker(eventAttacker, eventWeapon)
     local currentTime = _GetGameTimer()
     
-    -- PRIORITÉ 1: Attaquant direct de l'event (temps réel)
+    -- PRIORITÉ 1: Attaquant direct de l'event
     if eventAttacker and eventAttacker ~= -1 and _DoesEntityExist(eventAttacker) and _IsPedAPlayer(eventAttacker) then
         DebugClient('[ATTACKER] Priorité 1 (event direct)')
         return eventAttacker, eventWeapon
@@ -231,8 +273,7 @@ local function UpdateTeammateServerIds()
 end
 
 -- ========================================
--- 🔧 THREAD: SURVEILLANCE CONTINUE DES DÉGÂTS
--- (Capture l'attaquant AVANT l'event gameEventTriggered)
+-- THREAD: SURVEILLANCE CONTINUE DES DÉGÂTS
 -- ========================================
 CreateThread(function()
     DebugSuccess('Thread surveillance dégâts démarré (CRITIQUE)')
@@ -241,19 +282,15 @@ CreateThread(function()
         if not IsInMatch() or not damageSystemActive then
             _Wait(500)
         else
-            _Wait(0) -- CHAQUE FRAME en match
+            _Wait(0)
             
             local ped = _PlayerPedId()
             
-            -- Vérifier si le joueur a reçu des dégâts
             if HasEntityBeenDamagedByAnyPed(ped) then
                 local attacker = _GetPedSourceOfDeath(ped)
                 local weapon = _GetPedCauseOfDeath(ped)
                 
-                -- ENREGISTRER dans l'historique
                 RecordDamage(attacker, weapon)
-                
-                -- Nettoyer l'état
                 ClearEntityLastDamageEntity(ped)
             end
         end
@@ -288,7 +325,7 @@ CreateThread(function()
 end)
 
 -- ========================================
--- 🆕 THREAD: DÉSACTIVATION CONTINUE DES CASQUES
+-- THREAD: DÉSACTIVATION CONTINUE DES CASQUES
 -- ========================================
 CreateThread(function()
     DebugSuccess('Thread désactivation casques démarré')
@@ -297,11 +334,9 @@ CreateThread(function()
         if not IsInMatch() or not damageSystemActive then
             _Wait(1000)
         else
-            _Wait(500) -- Vérifier toutes les 500ms
+            _Wait(500)
             
             local ped = _PlayerPedId()
-            
-            -- Forcer la désactivation (au cas où le jeu réactive)
             _SetPedConfigFlag(ped, 438, true)
             _SetPedHelmet(ped, false)
         end
@@ -309,8 +344,7 @@ CreateThread(function()
 end)
 
 -- ========================================
--- 🎯 EVENT UNIQUE: DÉTECTION HEADSHOT + DÉGÂTS
--- (UN SEUL HANDLER = PAS DE RACE CONDITION)
+-- 🔧 EVENT AMÉLIORÉ: DÉTECTION HEADSHOT + DÉGÂTS
 -- ========================================
 AddEventHandler('gameEventTriggered', function(eventName, eventData)
     if eventName ~= 'CEventNetworkEntityDamage' then return end
@@ -328,20 +362,29 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
     DebugClient('[EVENT] Dégât reçu - Attacker: %d | Bone: %d | Weapon: %d | Dead: %s', 
         attacker or -1, bone or -1, weaponUsed or -1, tostring(isDead))
     
-    -- Enregistrer dans l'historique (même si pas headshot)
+    -- Enregistrer dans l'historique
     if attacker and attacker ~= -1 then
         RecordDamage(attacker, weaponUsed)
     end
     
     -- ========================================
-    -- VÉRIFIER SI HEADSHOT
+    -- 🆕 VÉRIFICATION HEADSHOT AMÉLIORÉE
     -- ========================================
-    local isHeadshot = (bone == DAMAGE_CONFIG.headshotBone)
+    local isHeadshot = IsHeadshotBone(bone)
+    
+    -- 🆕 DOUBLE-CHECK avec GetPedLastDamageBone
+    if not isHeadshot then
+        local lastBone = _GetPedLastDamageBone(victim)
+        if IsHeadshotBone(lastBone) then
+            isHeadshot = true
+            DebugClient('[HEADSHOT] 🎯 Détecté via GetPedLastDamageBone: %d', lastBone)
+        end
+    end
     
     if isHeadshot and DAMAGE_CONFIG.headshotEnabled then
-        DebugClient('[HEADSHOT] 💀 HEADSHOT DÉTECTÉ!')
+        DebugClient('[HEADSHOT] 💀 HEADSHOT DÉTECTÉ! (Bone: %d)', bone or -1)
         
-        -- Récupérer le MEILLEUR attaquant possible (3 priorités)
+        -- Récupérer le MEILLEUR attaquant possible
         local finalAttacker, finalWeapon = GetBestAttacker(attacker, weaponUsed)
         
         if not finalAttacker then
@@ -355,7 +398,6 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
         if isTeammate then
             DebugClient('[HEADSHOT] 🛡️ Headshot COÉQUIPIER - BLOQUÉ')
             
-            -- Restaurer la santé immédiatement
             local ped = _PlayerPedId()
             local currentHealth = _GetEntityHealth(ped)
             
@@ -364,7 +406,7 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
                 DebugSuccess('[HEADSHOT] 🛡️ Santé restaurée (team kill bloqué)')
             end
             
-            return -- Ne pas traiter ce headshot
+            return
         end
         
         -- Convertir PED -> ServerID
@@ -381,17 +423,14 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
         DebugClient('[HEADSHOT]    Weapon: %d', finalWeapon or 0)
         
         -- ========================================
-        -- TUER INSTANTANÉMENT
+        -- 🆕 KILL INSTANTANÉ GARANTI
         -- ========================================
         if DAMAGE_CONFIG.headshotInstantKill then
             local ped = _PlayerPedId()
-            -- ❌ RETIRÉ: _SetPedArmour(ped, 0)
-            _SetEntityHealth(ped, 0)
-            
-            DebugClient('[HEADSHOT] 💀 MORT INSTANTANÉE')
+            ForceInstantKill(ped, 'HEADSHOT')
         end
         
-        -- Notifier le serveur avec le BON tueur
+        -- Notifier le serveur
         if attackerServerId then
             TriggerServerEvent('pvp:playerDied', attackerServerId)
             DebugClient('[HEADSHOT] 📤 Notification serveur - Killer: %d', attackerServerId)
@@ -400,16 +439,25 @@ AddEventHandler('gameEventTriggered', function(eventName, eventData)
 end)
 
 -- ========================================
--- 🔧 THREAD MODIFIÉ: SURVEILLANCE DÉGÂTS (SANS ARMURE)
+-- 🔧 THREAD MODIFIÉ: SURVEILLANCE DÉGÂTS (AVEC PROTECTION HEADSHOT)
 -- ========================================
 CreateThread(function()
-    DebugSuccess('Thread restauration dégâts équipe démarré (SANS ARMURE)')
+    DebugSuccess('Thread restauration dégâts équipe démarré (AVEC PROTECTION HEADSHOT)')
     
     while true do
         if not IsInMatch() or not damageSystemActive then
             _Wait(500)
         else
             _Wait(0)
+            
+            -- 🆕 NE PAS RESTAURER SI HEADSHOT KILL EN COURS
+            if headshotKillInProgress then
+                local timeSinceHeadshot = _GetGameTimer() - lastHeadshotTime
+                if timeSinceHeadshot < 1000 then
+                    -- Skip complètement pendant 1 seconde après un headshot
+                    goto continue
+                end
+            end
             
             local ped = _PlayerPedId()
             local currentHealth = _GetEntityHealth(ped)
@@ -435,23 +483,19 @@ CreateThread(function()
                 end
                 
                 if shouldRestore then
-                    -- RESTAURER IMMÉDIATEMENT
                     _SetEntityHealth(ped, lastHealthCheck.health)
                     
-                    -- Mettre à jour immédiatement
                     lastHealthCheck = {
                         health = _GetEntityHealth(ped),
                         time = currentTime
                     }
                 else
-                    -- Dégâts acceptés (ennemi)
                     lastHealthCheck = {
                         health = currentHealth,
                         time = currentTime
                     }
                 end
             else
-                -- Pas de dégâts, mise à jour normale
                 if currentTime - lastHealthCheck.time > 200 then
                     lastHealthCheck = {
                         health = currentHealth,
@@ -459,6 +503,8 @@ CreateThread(function()
                     }
                 end
             end
+            
+            ::continue::
         end
     end
 end)
@@ -470,17 +516,18 @@ local function EnableDamageSystem()
     if damageSystemActive then return end
     
     damageSystemActive = true
-    DebugSuccess('🔫 Système de dégâts UNIFIÉ ACTIVÉ (SANS ARMURE)')
+    headshotKillInProgress = false
+    lastHeadshotTime = 0
+    
+    DebugSuccess('🔫 Système de dégâts UNIFIÉ ACTIVÉ (VERSION AMÉLIORÉE)')
     
     for weaponHash, multiplier in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, multiplier)
     end
     
-    -- 🆕 DÉSACTIVER LES CASQUES
     local ped = _PlayerPedId()
     DisableHelmetProtection(ped)
     
-    -- Réinitialiser le suivi
     lastHealthCheck = {
         health = _GetEntityHealth(ped),
         time = _GetGameTimer()
@@ -491,7 +538,6 @@ local function EnableDamageSystem()
     lastKnownWeapon = nil
     lastAttackerTime = 0
     
-    -- Mettre à jour la liste des coéquipiers
     _Wait(200)
     UpdateTeammateServerIds()
 end
@@ -500,13 +546,15 @@ local function DisableDamageSystem()
     if not damageSystemActive then return end
     
     damageSystemActive = false
+    headshotKillInProgress = false
+    lastHeadshotTime = 0
+    
     DebugClient('🔫 Système de dégâts DÉSACTIVÉ')
     
     for weaponHash, _ in pairs(DAMAGE_CONFIG.weapons) do
         _SetWeaponDamageModifier(weaponHash, 1.0)
     end
     
-    -- 🆕 RÉACTIVER LES CASQUES
     local ped = _PlayerPedId()
     EnableHelmetProtection(ped)
     
@@ -554,22 +602,14 @@ CreateThread(function()
 end)
 
 -- ========================================
--- ❌ RETIRÉ: GESTION ARMURE EN MATCH
--- ========================================
-
--- ========================================
 -- EVENT: MISE À JOUR COÉQUIPIERS
 -- ========================================
 RegisterNetEvent('pvp:setTeammates', function(teammateIds)
     DebugClient('[TEAM] 📡 Event setTeammates reçu: %s', json.encode(teammateIds))
     
-    -- Attendre que les joueurs soient chargés
     _Wait(500)
-    
-    -- Forcer la mise à jour immédiate
     UpdateTeammateServerIds()
     
-    -- Debug final
     DebugClient('[TEAM] 📊 Liste finale des coéquipiers:')
     for serverId, _ in pairs(teammateServerIds) do
         DebugClient('[TEAM]   - ServerId: %d', serverId)
@@ -596,15 +636,17 @@ RegisterCommand('hsdebug', function()
 end, false)
 
 RegisterCommand('hsinfo', function()
-    print('^5[DAMAGE]^7 === INFORMATIONS SYSTÈME UNIFIÉ (SANS ARMURE) ===')
+    print('^5[DAMAGE]^7 === INFORMATIONS SYSTÈME UNIFIÉ (VERSION AMÉLIORÉE) ===')
     print(string.format('Actif: %s', tostring(damageSystemActive)))
     print(string.format('Headshots: %s', tostring(DAMAGE_CONFIG.headshotEnabled)))
     print(string.format('Instant Kill: %s', tostring(DAMAGE_CONFIG.headshotInstantKill)))
     print(string.format('Historique: %d entrées', #recentDamageHistory))
     print(string.format('Cache attacker: %s', lastKnownAttacker and 'Actif' or 'Vide'))
     print(string.format('Coéquipiers: %d', CountTableKeys(teammateServerIds)))
+    print(string.format('Headshot kill actif: %s', tostring(headshotKillInProgress)))
     print('^5[CASQUES]^7 Protection désactivée: ' .. (damageSystemActive and 'OUI' or 'NON'))
     print('^5[ARMURE]^7 Système désactivé: OUI')
+    print('^5[BONES TÊTE]^7 ' .. #DAMAGE_CONFIG.headshotBones .. ' bones détectés')
 end, false)
 
 RegisterCommand('hsclear', function()
@@ -612,7 +654,15 @@ RegisterCommand('hsclear', function()
     lastKnownAttacker = nil
     lastKnownWeapon = nil
     lastAttackerTime = 0
-    print('^5[DAMAGE]^7 Historique effacé')
+    headshotKillInProgress = false
+    lastHeadshotTime = 0
+    print('^5[DAMAGE]^7 Historique et états effacés')
+end, false)
+
+RegisterCommand('hstest', function()
+    local ped = _PlayerPedId()
+    print('^5[HEADSHOT TEST]^7 Simulation headshot...')
+    ForceInstantKill(ped, 'TEST COMMANDE')
 end, false)
 
 -- Fonction utilitaire
@@ -628,10 +678,11 @@ end
 exports('EnableDamageSystem', EnableDamageSystem)
 exports('DisableDamageSystem', DisableDamageSystem)
 
-DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.2.0)')
-DebugSuccess('✅ Headshot one-shot: ACTIF')
+DebugSuccess('Module Damage System UNIFIÉ initialisé (VERSION 2.3.0 - HEADSHOT GARANTI)')
+DebugSuccess('✅ Headshot one-shot: GARANTI')
+DebugSuccess('✅ Multi-bone detection: ACTIF')
+DebugSuccess('✅ Protection anti-restauration: ACTIF')
 DebugSuccess('✅ Tracking multi-niveaux: ACTIF')
 DebugSuccess('✅ Anti-friendly fire: ACTIF')
 DebugSuccess('✅ Protection casques: DÉSACTIVÉE')
 DebugSuccess('✅ Système d\'armure: DÉSACTIVÉ')
-DebugSuccess('✅ Aucun "Suicide" erroné')

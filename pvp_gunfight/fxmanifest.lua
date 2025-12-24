@@ -45,7 +45,8 @@ server_scripts {
     'server/discord.lua',
     'server/inventory_bridge.lua',
     'server/webhook_manager.lua',
-    'server/permissions.lua',          -- ✅ NOUVEAU: Système de permissions
+    'server/permissions.lua',
+    'server/leaderboard_cache.lua',  -- ✅ NOUVEAU
     'server/main.lua',
     'server/discord_leaderboard.lua'
 }

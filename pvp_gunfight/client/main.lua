@@ -1,9 +1,9 @@
 -- ========================================
 -- PVP GUNFIGHT - CLIENT MAIN
--- Version 4.12.0 - SANS ARMURE
+-- Version 4.11.0 - SYSTÈME ANTI-ARME-MANQUANTE
 -- ========================================
 
-DebugSuccess('Script chargé (Version 4.12.0 - Sans Armure)')
+DebugSuccess('Script chargé (Version 4.11.0 - Anti-Arme-Manquante)')
 
 -- Variables locales
 local pedSpawned = false
@@ -626,7 +626,7 @@ RegisterNetEvent('pvp:setTeammates', function(teammateIds)
 end)
 
 -- ========================================
--- 🔧 EVENTS RÉSEAU - TÉLÉPORTATION (SANS ARMURE)
+-- 🔧 EVENTS RÉSEAU - TÉLÉPORTATION (MODIFIÉ AVEC VÉRIFICATIONS)
 -- ========================================
 RegisterNetEvent('pvp:teleportToSpawn', function(spawn, team, matchId, arenaKey)
     DebugClient('Téléportation - Team: %s, Match: %d', team, matchId)
@@ -650,7 +650,7 @@ RegisterNetEvent('pvp:teleportToSpawn', function(spawn, team, matchId, arenaKey)
     _SetEntityHeading(ped, spawn.w)
     _FreezeEntityPosition(ped, true)
     _SetEntityHealth(ped, 200)
-    -- ❌ RETIRÉ: SetPedArmour(ped, 100)
+    SetPedArmour(ped, 100)
     ClearPedBloodDamage(ped)
     ResetPedVisibleDamage(ped)
     
@@ -696,7 +696,7 @@ RegisterNetEvent('pvp:respawnPlayer', function(spawn)
     _SetEntityCoords(ped, spawn.x, spawn.y, spawn.z, false, false, false, false)
     _SetEntityHeading(ped, spawn.w)
     _SetEntityHealth(ped, 200)
-    -- ❌ RETIRÉ: SetPedArmour(ped, 100)
+    SetPedArmour(ped, 100)
     ClearPedBloodDamage(ped)
     ResetPedVisibleDamage(ped)
     
@@ -792,7 +792,7 @@ RegisterNetEvent('pvp:showKillfeed', function(killerName, victimName, weapon, is
 end)
 
 -- ========================================
--- EVENTS RÉSEAU - FIN DE MATCH (SANS ARMURE)
+-- EVENTS RÉSEAU - FIN DE MATCH
 -- ========================================
 RegisterNetEvent('pvp:matchEnd', function(victory, score, serverPlayerTeam)
     DebugClient('Fin match - Victoire: %s', tostring(victory))
@@ -839,7 +839,7 @@ RegisterNetEvent('pvp:matchEnd', function(victory, score, serverPlayerTeam)
     _SetEntityCoords(ped, Config.PedLocation.coords.x, Config.PedLocation.coords.y, Config.PedLocation.coords.z, false, false, false, false)
     _SetEntityHeading(ped, Config.PedLocation.coords.w)
     _SetEntityHealth(ped, 200)
-    -- ❌ RETIRÉ: SetPedArmour(ped, 0)
+    SetPedArmour(ped, 0)
     ClearPedBloodDamage(ped)
     ResetPedVisibleDamage(ped)
     RemoveAllPedWeapons(ped, true)
@@ -875,7 +875,7 @@ RegisterNetEvent('pvp:forceReturnToLobby', function()
     _SetEntityCoords(ped, Config.PedLocation.coords.x, Config.PedLocation.coords.y, Config.PedLocation.coords.z, false, false, false, false)
     _SetEntityHeading(ped, Config.PedLocation.coords.w)
     _SetEntityHealth(ped, 200)
-    -- ❌ RETIRÉ: SetPedArmour(ped, 0)
+    SetPedArmour(ped, 0)
     ClearPedBloodDamage(ped)
     ResetPedVisibleDamage(ped)
     RemoveAllPedWeapons(ped, true)
@@ -1176,7 +1176,7 @@ CreateThread(function()
 end)
 
 -- ========================================
--- CLEANUP (SANS ARMURE)
+-- CLEANUP
 -- ========================================
 local function CleanupAndReturnToLobby(showNotification)
     DebugClient('Cleanup complet')
@@ -1213,7 +1213,7 @@ local function CleanupAndReturnToLobby(showNotification)
     _SetEntityCoords(ped, lobbyX, lobbyY, lobbyZ, false, false, false, false)
     _SetEntityHeading(ped, lobbyH)
     _SetEntityHealth(ped, 200)
-    -- ❌ RETIRÉ: SetPedArmour(ped, 0)
+    SetPedArmour(ped, 0)
     ClearPedBloodDamage(ped)
     ResetPedVisibleDamage(ped)
     RemoveAllPedWeapons(ped, true)
@@ -1260,7 +1260,7 @@ AddEventHandler('onResourceStop', function(resourceName)
         _SetEntityCoords(ped, lobbyX, lobbyY, lobbyZ, false, false, false, false)
         _SetEntityHeading(ped, lobbyH)
         _SetEntityHealth(ped, 200)
-        -- ❌ RETIRÉ: SetPedArmour(ped, 0)
+        SetPedArmour(ped, 0)
         ClearPedBloodDamage(ped)
         ResetPedVisibleDamage(ped)
         RemoveAllPedWeapons(ped, true)
@@ -1340,4 +1340,4 @@ CreateThread(function()
     SpawnPed()
 end)
 
-DebugSuccess('Initialisation terminée (VERSION 4.12.0 - Sans Armure)')
+DebugSuccess('Initialisation terminée (VERSION 4.11.0 - Système Anti-Arme-Manquante)')
