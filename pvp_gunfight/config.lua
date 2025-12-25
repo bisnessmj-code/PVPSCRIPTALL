@@ -73,7 +73,7 @@ Config.Discord = {
 -- CONFIGURATION DU PED
 -- ========================================
 Config.PedLocation = {
-    coords = vector4(-2650.470214, -767.749450, 4.931884, 90.708656),
+    coords = vector4(-2650.786866, -767.472534, 4.965576, 96.377944),
     model = 's_m_y_dealer_01',
     scenario = 'WORLD_HUMAN_CLIPBOARD'
 }
@@ -241,7 +241,7 @@ Config.Arenas = {
         name = "mothel",
         zone = {
             center = vector3(167.749450, -1804.048340, 29.583130),
-            radius = 20.0
+            radius = 24.0
         },
         teamA = {
             vector4(158.927474, -1810.048340, 28.690064, 320.314972),

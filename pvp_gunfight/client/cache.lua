@@ -1,6 +1,6 @@
 -- ========================================
 -- PVP GUNFIGHT - SYSTÈME DE CACHE CENTRALISÉ
--- Version 4.0.0 - Cache intelligent des natives
+-- Version 4.1.0 - Cache intelligent SANS ARMURE
 -- ========================================
 
 -- ========================================
@@ -13,7 +13,6 @@ local _GetEntityMaxHealth = GetEntityMaxHealth
 local _IsEntityDead = IsEntityDead
 local _GetGameTimer = GetGameTimer
 local _IsPedInAnyVehicle = IsPedInAnyVehicle
-local _GetPedArmour = GetPedArmour
 local _GetCurrentPedWeapon = GetCurrentPedWeapon
 local _Wait = Wait
 
@@ -34,7 +33,7 @@ local Cache = {
     isInVehicle = false,
     health = 200,
     maxHealth = 200,
-    armour = 0,
+    -- ❌ RETIRÉ: armour
     
     -- Arme
     hasWeapon = false,
@@ -100,7 +99,7 @@ local function UpdateState()
     Cache.isInVehicle = _IsPedInAnyVehicle(Cache.ped, false)
     Cache.health = _GetEntityHealth(Cache.ped)
     Cache.maxHealth = _GetEntityMaxHealth(Cache.ped)
-    Cache.armour = _GetPedArmour(Cache.ped)
+    -- ❌ RETIRÉ: Cache.armour = _GetPedArmour(Cache.ped)
     Cache.lastStateUpdate = now
 end
 
@@ -157,11 +156,7 @@ function GetCachedHealth()
     return Cache.health, Cache.maxHealth
 end
 
--- Obtient l'armure (avec cache)
-function GetCachedArmour()
-    UpdateState()
-    return Cache.armour
-end
+-- ❌ RETIRÉ: GetCachedArmour()
 
 -- Obtient l'arme actuelle (avec cache)
 function GetCachedWeapon()
@@ -305,4 +300,4 @@ exports('IsInMatch', IsInMatch)
 exports('GetMatchState', GetMatchState)
 exports('SetMatchState', SetMatchState)
 
-DebugSuccess('Module Cache chargé (VERSION 4.0.0)')
+DebugSuccess('Module Cache chargé (VERSION 4.1.0 - SANS ARMURE)')

@@ -1,9 +1,9 @@
 -- ========================================
 -- PVP GUNFIGHT SERVER MAIN
--- Version 4.16.0 - ANTI-DEADLOCK + RETRAIT MATCH NUL + ÉCHANGE SPAWNS + CACHE
+-- Version 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS
 -- ========================================
 
-DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ + SPAWN SWAP + CACHE + ANTI-DEADLOCK)...')
+DebugServer('Chargement systeme PVP (ULTRA-OPTIMISÉ + SPAWN SWAP)...')
 
 -- ========================================
 -- ÉTATS DE MATCH
@@ -945,7 +945,7 @@ RegisterNetEvent('pvp:playerDiedOutsideZone', function()
 end)
 
 -- ========================================
--- ✅ FONCTION MODIFIÉE: GESTION MORT (ANTI-DEADLOCK)
+-- ✅ FONCTION SIMPLIFIÉE: GESTION MORT (SANS MORTS SIMULTANÉES)
 -- ========================================
 function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
     if not match then
@@ -967,17 +967,10 @@ function HandlePlayerDeath(matchId, match, victimId, killerId, isFriendlyFire)
         friendlyFire = isFriendlyFire
     }
     
-    -- ✅ MISE À JOUR STATS (ANTI-DEADLOCK: Délais entre les updates)
-    CreateThread(function()
-        -- D'abord le KILLER (kills)
-        if killerId and killerId ~= victimId and not isFriendlyFire then
-            exports['pvp_gunfight']:UpdatePlayerKillsByMode(killerId, 1, match.mode)
-            Wait(50) -- ✅ Petit délai pour éviter collision
-        end
-        
-        -- Ensuite la VICTIME (deaths)
-        exports['pvp_gunfight']:UpdatePlayerDeathsByMode(victimId, 1, match.mode)
-    end)
+    if killerId and killerId ~= victimId and not isFriendlyFire then
+        exports['pvp_gunfight']:UpdatePlayerKillsByMode(killerId, 1, match.mode)
+    end
+    exports['pvp_gunfight']:UpdatePlayerDeathsByMode(victimId, 1, match.mode)
     
     local weaponHash = GetHashKey('WEAPON_PISTOL50')
     local isHeadshot = false
@@ -1176,9 +1169,6 @@ function StartRound(matchId, match, arena)
     end
 end
 
--- ========================================
--- ✅ FONCTION MODIFIÉE: FIN DE MATCH (AVEC INVALIDATION CACHE)
--- ========================================
 function EndMatch(matchId, match)
     if not match then
         return
@@ -1190,18 +1180,12 @@ function EndMatch(matchId, match)
     local winners = winningTeam == 'team1' and match.team1 or match.team2
     local losers = winningTeam == 'team1' and match.team2 or match.team1
     
-    -- Mise à jour ELO
     if match.mode == '1v1' then
         exports['pvp_gunfight']:UpdatePlayerElo1v1ByMode(winners[1], losers[1], match.score, match.mode)
     else
         exports['pvp_gunfight']:UpdateTeamEloByMode(winners, losers, match.score, match.mode)
     end
     
-    -- ✅ INVALIDER LE CACHE DU MODE CONCERNÉ
-    exports['pvp_gunfight']:InvalidateLeaderboardCache(match.mode)
-    DebugServer('🗑️ Cache leaderboard %s invalidé après match', match.mode)
-    
-    -- Notifications joueurs
     for i = 1, #winners do
         if winners[i] > 0 and GetPlayerPing(winners[i]) > 0 then
             TriggerClientEvent('pvp:matchEnd', winners[i], true, match.score, match.playerTeams[winners[i]])
@@ -1268,9 +1252,6 @@ function HandlePlayerDisconnect(playerId)
     else
         exports['pvp_gunfight']:UpdateTeamEloByMode(winners, losers, forfeitScore, match.mode)
     end
-    
-    -- ✅ INVALIDER LE CACHE
-    exports['pvp_gunfight']:InvalidateLeaderboardCache(match.mode)
     
     for i = 1, #match.players do
         local pid = match.players[i]
@@ -1506,4 +1487,4 @@ RegisterCommand('pvpstatus', function(source)
     end
 end, false)
 
-DebugSuccess('Systeme PVP charge (VERSION 4.16.0 - ANTI-DEADLOCK + RETRAIT MATCH NUL + ÉCHANGE SPAWNS + CACHE)')
+DebugSuccess('Systeme PVP charge (VERSION 4.14.0 - RETRAIT MATCH NUL + ÉCHANGE SPAWNS)')
